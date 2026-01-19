@@ -13,7 +13,7 @@ pub enum Error {
     Parse(String),
     #[error("authentication error: {0}")]
     Auth(String),
-    #[error("invalid recipient (only @yopmail.com allowed)")]
+    #[error("invalid recipient domain")]
     InvalidRecipient,
     #[error("unsupported operation: {0}")]
     Unsupported(String),

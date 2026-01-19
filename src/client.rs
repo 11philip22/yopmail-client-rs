@@ -11,8 +11,15 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-fn sanitize_mailbox(mailbox: &str) -> String {
-    mailbox.split('@').next().unwrap_or(mailbox).to_lowercase()
+fn parse_mailbox(mailbox: &str) -> (String, String) {
+    if let Some((local, domain)) = mailbox.split_once('@') {
+        (
+            local.trim().to_lowercase(),
+            domain.trim().to_lowercase(),
+        )
+    } else {
+        (mailbox.trim().to_lowercase(), DEFAULT_DOMAIN.to_string())
+    }
 }
 
 fn build_headers(base: &[(&str, &str)], extras: &[(&str, &str)]) -> HeaderMap {
@@ -29,6 +36,7 @@ fn build_headers(base: &[(&str, &str)], extras: &[(&str, &str)]) -> HeaderMap {
 
 pub struct YopmailClient {
     mailbox: String,
+    domain: String,
     config: Config,
     jar: Arc<Jar>,
     client: Client,
@@ -37,7 +45,7 @@ pub struct YopmailClient {
 
 impl YopmailClient {
     pub fn new(mailbox: impl AsRef<str>, config: Option<Config>) -> Result<Self> {
-        let mailbox = sanitize_mailbox(mailbox.as_ref());
+        let (mailbox, domain) = parse_mailbox(mailbox.as_ref());
         let cfg = config.unwrap_or_default();
         let jar = Arc::new(Jar::default());
 
@@ -54,6 +62,7 @@ impl YopmailClient {
 
         Ok(Self {
             mailbox,
+            domain,
             config: cfg,
             jar,
             client,
@@ -245,8 +254,12 @@ impl YopmailClient {
             self.open_inbox()?;
         }
 
+        let recipient_ok = ALT_DOMAINS.iter().any(|d| to.ends_with(d));
+        if !recipient_ok {
+            return Err(Error::InvalidRecipient);
+        }
         let form = [
-            ("msgfrom", format!("{}@yopmail.com", self.mailbox)),
+            ("msgfrom", format!("{}@{}", self.mailbox, self.domain)),
             ("msgto", to.to_string()),
             ("msgsubject", subject.to_string()),
             ("msgbody", body.to_string()),

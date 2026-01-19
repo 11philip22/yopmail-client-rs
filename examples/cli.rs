@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::fs;
 use std::path::PathBuf;
-use yopmail_client_rs::{
+use yopmail_client::{
     check_inbox_page, generate_random_mailbox, get_inbox_summary, get_rss_feed_data,
     get_rss_feed_url, Error, YopmailClient,
 };
@@ -181,7 +181,12 @@ fn main() -> Result<(), Error> {
         Commands::Info => {
             let mailbox = require_mailbox(&mailbox_opt);
             let (count, latest) = get_inbox_summary(&mailbox, config.clone())?;
-            println!("Mailbox: {}@yopmail.com", mailbox);
+            let display = if mailbox.contains('@') {
+                mailbox.clone()
+            } else {
+                format!("{mailbox}@{}", yopmail_client_rs::DEFAULT_DOMAIN)
+            };
+            println!("Mailbox: {}", display);
             println!("Messages: {}", count);
             if let Some(msg) = latest {
                 println!("Latest: {}", msg.subject);
@@ -199,8 +204,8 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn build_config(proxy: Option<String>) -> Option<yopmail_client_rs::models::Config> {
-    let mut cfg = yopmail_client_rs::models::Config::default();
+fn build_config(proxy: Option<String>) -> Option<yopmail_client::models::Config> {
+    let mut cfg = yopmail_client::models::Config::default();
     cfg.proxy_url = proxy;
     Some(cfg)
 }
