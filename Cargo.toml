@@ -2,6 +2,14 @@
 name = "yopmail-client"
 version = "0.1.0"
 edition = "2024"
+description = "Unofficial blocking client for YOPmail: list inboxes, fetch (HTML/raw), send, attachments, RSS"
+license = "MIT"
+readme = "README.md"
+homepage = "https://yopmail.com"
+repository = "https://github.com/11philip22/yopmail-client-rs"
+documentation = "https://docs.rs/yopmail-client"
+keywords = ["yopmail", "email", "disposable", "temp", "rss"]
+categories = ["email", "command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
