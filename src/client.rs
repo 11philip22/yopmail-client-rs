@@ -1,11 +1,13 @@
 use crate::constants::*;
 use crate::error::{Error, Result};
-use crate::models::{Config, Message, RssItem};
+use crate::models::{Attachment, Config, Message, MessageContent, RssItem};
 use regex::Regex;
 use reqwest::blocking::{Client, ClientBuilder};
 use reqwest::cookie::Jar;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use rand::{distributions::Alphanumeric, Rng};
 use scraper::{Html, Selector};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -131,6 +133,11 @@ impl YopmailClient {
     }
 
     pub fn fetch_message(&mut self, message_id: &str) -> Result<String> {
+        let content = self.fetch_message_full(message_id)?;
+        Ok(content.text)
+    }
+
+    pub fn fetch_message_full(&mut self, message_id: &str) -> Result<MessageContent> {
         if self.yp_token.is_none() {
             self.open_inbox()?;
         }
@@ -207,7 +214,14 @@ impl YopmailClient {
 
             let (status, body) = do_request(&self.client, &params)?;
             if status.is_success() {
-                return Ok(extract_message_body(&body));
+                let attachments = extract_attachments(&body, &self.config.base_url);
+                let html = extract_message_html(&body);
+                return Ok(MessageContent {
+                    text: extract_message_body(&body),
+                    html,
+                    raw: body,
+                    attachments,
+                });
             }
 
             last_status = Some(status);
@@ -265,6 +279,26 @@ impl YopmailClient {
         let messages = self.list_messages(1)?;
         let count = messages.len();
         Ok((count, messages))
+    }
+
+    pub fn download_attachment(&mut self, attachment: &Attachment) -> Result<Vec<u8>> {
+        if self.yp_token.is_none() {
+            self.open_inbox()?;
+        }
+        self.set_default_cookies();
+
+        let headers = build_headers(DEFAULT_HEADERS, MAIL_HEADERS);
+        let url = normalize_url(&attachment.url, &self.config.base_url);
+        let resp = self.client.get(url).headers(headers).send()?;
+        let status = resp.status();
+        let bytes = resp.bytes()?;
+        if !status.is_success() {
+            return Err(Error::Status {
+                status,
+                body: format!("failed to download attachment: {}", status),
+            });
+        }
+        Ok(bytes.to_vec())
     }
 
     pub fn get_rss_feed_url(&self, mailbox: Option<&str>) -> String {
@@ -391,6 +425,82 @@ fn extract_message_body(body: &str) -> String {
     clean_text(body)
 }
 
+fn extract_message_html(body: &str) -> String {
+    let doc = Html::parse_document(body);
+    let selectors = [
+        "#mailctn #mail",
+        "#mailctn",
+        "#mail",
+        "div.mail-body",
+        "div.mail",
+        "div.message",
+        "div.content",
+        "div.body",
+    ];
+    for sel in selectors {
+        if let Ok(selector) = Selector::parse(sel) {
+            if let Some(node) = doc.select(&selector).next() {
+                let html = node.inner_html();
+                if html.trim().len() > 5 {
+                    return html;
+                }
+            }
+        }
+    }
+    body.to_string()
+}
+
+fn extract_attachments(body: &str, base: &str) -> Vec<Attachment> {
+    let doc = Html::parse_document(body);
+    let mut seen = HashSet::new();
+    let mut attachments = Vec::new();
+    if let Ok(sel) = Selector::parse("a.pj") {
+        for node in doc.select(&sel) {
+            if let Some(href) = node.value().attr("href") {
+                let url = normalize_url(href, base);
+                if seen.insert(url.clone()) {
+                    let name = node
+                        .value()
+                        .attr("title")
+                        .map(|s| s.to_string())
+                        .or_else(|| {
+                            let txt = node.text().collect::<String>().trim().to_string();
+                            if txt.is_empty() {
+                                None
+                            } else {
+                                Some(txt)
+                            }
+                        });
+                    attachments.push(Attachment { name, url });
+                }
+            }
+        }
+    }
+
+    if let Ok(re) = Regex::new(r#"(/downmail\?[^"' ]+)"#) {
+        for cap in re.captures_iter(body) {
+            if let Some(m) = cap.get(1) {
+                let url = normalize_url(m.as_str(), base);
+                if seen.insert(url.clone()) {
+                    attachments.push(Attachment { name: None, url });
+                }
+            }
+        }
+    }
+
+    attachments
+}
+
+fn normalize_url(href: &str, base: &str) -> String {
+    if href.starts_with("http://") || href.starts_with("https://") {
+        href.to_string()
+    } else if href.starts_with('/') {
+        format!("{}{}", base.trim_end_matches('/'), href)
+    } else {
+        format!("{}/{}", base.trim_end_matches('/'), href)
+    }
+}
+
 fn clean_text(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut last_ws = false;
@@ -481,10 +591,30 @@ pub fn check_inbox(mailbox: &str, config: Option<Config>) -> Result<Vec<Message>
     client.list_messages(1)
 }
 
+pub fn check_inbox_page(
+    mailbox: &str,
+    page: i32,
+    config: Option<Config>,
+) -> Result<Vec<Message>> {
+    let mut client = YopmailClient::new(mailbox, config)?;
+    client.open_inbox()?;
+    client.list_messages(page)
+}
+
 pub fn get_message_by_id(mailbox: &str, message_id: &str, config: Option<Config>) -> Result<String> {
     let mut client = YopmailClient::new(mailbox, config)?;
     client.open_inbox()?;
     client.fetch_message(message_id)
+}
+
+pub fn get_message_by_id_full(
+    mailbox: &str,
+    message_id: &str,
+    config: Option<Config>,
+) -> Result<MessageContent> {
+    let mut client = YopmailClient::new(mailbox, config)?;
+    client.open_inbox()?;
+    client.fetch_message_full(message_id)
 }
 
 pub fn get_last_message(mailbox: &str, config: Option<Config>) -> Result<Option<Message>> {
@@ -513,6 +643,13 @@ pub fn get_inbox_count(mailbox: &str, config: Option<Config>) -> Result<usize> {
     Ok(messages.len())
 }
 
+pub fn get_inbox_count_page(mailbox: &str, page: i32, config: Option<Config>) -> Result<usize> {
+    let mut client = YopmailClient::new(mailbox, config)?;
+    client.open_inbox()?;
+    let messages = client.list_messages(page)?;
+    Ok(messages.len())
+}
+
 pub fn get_inbox_summary(
     mailbox: &str,
     config: Option<Config>,
@@ -520,6 +657,19 @@ pub fn get_inbox_summary(
     let mut client = YopmailClient::new(mailbox, config)?;
     client.open_inbox()?;
     let messages = client.list_messages(1)?;
+    let count = messages.len();
+    let latest = messages.get(0).cloned();
+    Ok((count, latest))
+}
+
+pub fn get_inbox_summary_page(
+    mailbox: &str,
+    page: i32,
+    config: Option<Config>,
+) -> Result<(usize, Option<Message>)> {
+    let mut client = YopmailClient::new(mailbox, config)?;
+    client.open_inbox()?;
+    let messages = client.list_messages(page)?;
     let count = messages.len();
     let latest = messages.get(0).cloned();
     Ok((count, latest))
@@ -533,4 +683,14 @@ pub fn get_rss_feed_url(mailbox: &str, config: Option<Config>) -> Result<String>
 pub fn get_rss_feed_data(mailbox: &str, config: Option<Config>) -> Result<(String, Vec<RssItem>)> {
     let mut client = YopmailClient::new(mailbox, config)?;
     client.get_rss_feed_data(None)
+}
+
+/// Generate a random mailbox name (alphanumeric, lowercased).
+pub fn generate_random_mailbox(len: usize) -> String {
+    let length = len.max(6).min(32);
+    let mut rng = rand::thread_rng();
+    let raw: String = (0..length)
+        .map(|_| rng.sample(Alphanumeric) as char)
+        .collect();
+    raw.to_lowercase()
 }

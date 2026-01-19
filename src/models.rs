@@ -19,6 +19,20 @@ pub struct RssItem {
     pub description: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct Attachment {
+    pub name: Option<String>,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MessageContent {
+    pub text: String,
+    pub html: String,
+    pub raw: String,
+    pub attachments: Vec<Attachment>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub base_url: String,

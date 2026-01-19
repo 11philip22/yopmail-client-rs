@@ -5,6 +5,8 @@ use thiserror::Error;
 pub enum Error {
     #[error("http error: {0}")]
     Http(#[from] reqwest::Error),
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
     #[error("network error: {0}")]
     Network(String),
     #[error("parse error: {0}")]
@@ -13,6 +15,8 @@ pub enum Error {
     Auth(String),
     #[error("invalid recipient (only @yopmail.com allowed)")]
     InvalidRecipient,
+    #[error("unsupported operation: {0}")]
+    Unsupported(String),
     #[error("unexpected status {status}: {body}")]
     Status { status: StatusCode, body: String },
 }
