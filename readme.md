@@ -6,7 +6,7 @@
 
 ![YOPmail](https://yopmail.com/logo.png)
 
-Unofficial blocking Rust client for [YOPmail](https://yopmail.com). It mirrors the web UI flow (cookies + `yp` tokens) to list inboxes, fetch message bodies (text + HTML), download attachments, send mails, and work with RSS feeds. Ships with a small CLI example.
+Unofficial async Rust client for [YOPmail](https://yopmail.com). It mirrors the web UI flow (cookies + `yp` tokens) to list inboxes, fetch message bodies (text + HTML), download attachments, send mails, and work with RSS feeds. Ships with a small CLI example.
 
 ## Install
 ```bash
@@ -20,29 +20,38 @@ use yopmail_client::{
     YopmailClient, Config,
 };
 
-let mailbox = "mytempbox";
-let cfg = Config::default();
+#[tokio::main]
+async fn main() -> Result<(), yopmail_client::Error> {
+    let mailbox = "mytempbox";
+    let cfg = Config::default();
 
-// List first page
-let messages = check_inbox_page(mailbox, 1, Some(cfg.clone()))?;
+    // List first page
+    let messages = check_inbox_page(mailbox, 1, Some(cfg.clone())).await?;
 
-// Fetch plain text
-let body = get_message_by_id(mailbox, &messages[0].id, Some(cfg.clone()))?;
+    // Fetch plain text
+    let body = get_message_by_id(mailbox, &messages[0].id, Some(cfg.clone())).await?;
 
-// Fetch full content (html/raw/attachments)
-let content = get_message_by_id_full(mailbox, &messages[0].id, Some(cfg.clone()))?;
-for att in &content.attachments {
-    println!("attachment: {} -> {}", att.name.clone().unwrap_or_default(), att.url);
+    // Fetch full content (html/raw/attachments)
+    let content = get_message_by_id_full(mailbox, &messages[0].id, Some(cfg.clone())).await?;
+    for att in &content.attachments {
+        println!(
+            "attachment: {} -> {}",
+            att.name.clone().unwrap_or_default(),
+            att.url
+        );
+    }
+
+    // Download an attachment
+    let mut client = YopmailClient::new(mailbox, Some(cfg.clone()))?;
+    client.open_inbox().await?;
+    let bytes = client.download_attachment(&content.attachments[0]).await?;
+
+    // Generate a random mailbox name
+    let random_box = generate_random_mailbox(12);
+    println!("{random_box}@yopmail.com");
+
+    Ok(())
 }
-
-// Download an attachment
-let mut client = YopmailClient::new(mailbox, Some(cfg.clone()))?;
-client.open_inbox()?;
-let bytes = client.download_attachment(&content.attachments[0])?;
-
-// Generate a random mailbox name
-let random_box = generate_random_mailbox(12);
-println!("{random_box}@yopmail.com");
 ```
 
 ## CLI (examples/cli.rs)
@@ -71,6 +80,7 @@ Commands: `list`, `fetch`, `send`, `rss-url`, `rss-data`, `info`, `random`. Use 
 ```
 
 ## Notes
+- All network helpers are async; run them inside an async runtime such as `tokio`.
 - Alternative domains: pass any domain from the list above via `--mailbox user@domain` (CLI) or `YopmailClient::new("user@domain", ...)`.
 - Network is live scraping of YOPmail; availability and captcha/rate limits are outside this client’s control.
 - Send only to the allowed YOPmail domains listed above.

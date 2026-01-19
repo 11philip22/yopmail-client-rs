@@ -1,8 +1,8 @@
 [package]
 name = "yopmail-client"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
-description = "Unofficial blocking client for YOPmail: list inboxes, fetch (HTML/raw), send, attachments, RSS"
+description = "Unofficial async client for YOPmail: list inboxes, fetch (HTML/raw), send, attachments, RSS"
 license = "MIT"
 readme = "readme.md"
 homepage = "https://yopmail.com"
@@ -14,12 +14,15 @@ categories = ["email", "command-line-utilities"]
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 regex = "1.11"
-reqwest = { version = "0.12", features = ["blocking", "cookies", "gzip", "brotli", "deflate", "json"] }
+reqwest = { version = "0.12", features = ["cookies", "gzip", "brotli", "deflate", "json"] }
 scraper = "0.19"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 rand = "0.8"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [[example]]
 name = "cli"

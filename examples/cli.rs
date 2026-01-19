@@ -73,7 +73,8 @@ enum Commands {
     },
 }
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let cli = Cli::parse();
     let config = build_config(cli.proxy.clone());
     let mailbox_opt = cli.mailbox.clone();
@@ -81,7 +82,7 @@ fn main() -> Result<(), Error> {
     match cli.command {
         Commands::List { page, details } => {
             let mailbox = require_mailbox(&mailbox_opt);
-            let messages = check_inbox_page(&mailbox, page, config.clone())?;
+            let messages = check_inbox_page(&mailbox, page, config.clone()).await?;
             if messages.is_empty() {
                 println!("No messages found.");
             } else {
@@ -109,8 +110,8 @@ fn main() -> Result<(), Error> {
         } => {
             let mailbox = require_mailbox(&mailbox_opt);
             let mut client = YopmailClient::new(&mailbox, config.clone())?;
-            client.open_inbox()?;
-            let content = client.fetch_message_full(&id)?;
+            client.open_inbox().await?;
+            let content = client.fetch_message_full(&id).await?;
 
             if raw {
                 println!("{}", content.raw);
@@ -146,7 +147,7 @@ fn main() -> Result<(), Error> {
                             .clone()
                             .unwrap_or_else(|| format!("attachment_{idx}"));
                         let path = dir.join(name);
-                        let bytes = client.download_attachment(att)?;
+                        let bytes = client.download_attachment(att).await?;
                         fs::write(&path, &bytes)?;
                         println!("Saved {} ({} bytes)", path.display(), bytes.len());
                     }
@@ -156,8 +157,8 @@ fn main() -> Result<(), Error> {
         Commands::Send { to, subject, body } => {
             let mailbox = require_mailbox(&mailbox_opt);
             let mut client = YopmailClient::new(&mailbox, config.clone())?;
-            client.open_inbox()?;
-            client.send_message(&to, &subject, &body)?;
+            client.open_inbox().await?;
+            client.send_message(&to, &subject, &body).await?;
             println!("Message sent to {}", to);
         }
         Commands::RssUrl { mailbox } => {
@@ -169,7 +170,7 @@ fn main() -> Result<(), Error> {
         Commands::RssData { mailbox } => {
             let fallback = require_mailbox(&mailbox_opt);
             let (url, items) =
-                get_rss_feed_data(mailbox.as_deref().unwrap_or(&fallback), config.clone())?;
+                get_rss_feed_data(mailbox.as_deref().unwrap_or(&fallback), config.clone()).await?;
             println!("RSS URL: {url}");
             println!("{} message(s)", items.len());
             for (idx, item) in items.iter().enumerate() {
@@ -180,11 +181,11 @@ fn main() -> Result<(), Error> {
         }
         Commands::Info => {
             let mailbox = require_mailbox(&mailbox_opt);
-            let (count, latest) = get_inbox_summary(&mailbox, config.clone())?;
+            let (count, latest) = get_inbox_summary(&mailbox, config.clone()).await?;
             let display = if mailbox.contains('@') {
                 mailbox.clone()
             } else {
-                format!("{mailbox}@{}", yopmail_client_rs::DEFAULT_DOMAIN)
+                format!("{mailbox}@{}", yopmail_client::DEFAULT_DOMAIN)
             };
             println!("Mailbox: {}", display);
             println!("Messages: {}", count);
