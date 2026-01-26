@@ -79,7 +79,7 @@ async fn main() -> Result<(), Error> {
         Commands::List { page, details } => {
             let mailbox = require_mailbox(&mailbox_opt);
             let mut client = build_client(&mailbox, &cli.proxy)?;
-            let messages = client.check_inbox_page(page).await?;
+            let messages = client.list_messages(page).await?;
             if messages.is_empty() {
                 println!("No messages found.");
             } else {

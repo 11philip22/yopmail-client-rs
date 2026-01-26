@@ -345,18 +345,6 @@ impl YopmailClient {
         self.list_messages(1).await
     }
 
-    pub async fn check_inbox_page(&mut self, page: i32) -> Result<Vec<Message>> {
-        self.list_messages(page).await
-    }
-
-    pub async fn get_message_by_id(&mut self, message_id: &str) -> Result<String> {
-        self.fetch_message(message_id).await
-    }
-
-    pub async fn get_message_by_id_full(&mut self, message_id: &str) -> Result<MessageContent> {
-        self.fetch_message_full(message_id).await
-    }
-
     pub async fn get_last_message(&mut self) -> Result<Option<Message>> {
         let messages = self.list_messages(1).await?;
         Ok(messages.into_iter().next())
