@@ -15,22 +15,21 @@ cargo add yopmail-client
 
 ## Quickstart (library)
 ```rust
-use yopmail_client::{
-    check_inbox_page, get_message_by_id, get_message_by_id_full, generate_random_mailbox,
-    YopmailClient,
-};
+use yopmail_client::{generate_random_mailbox, YopmailClient};
 
 #[tokio::main]
 async fn main() -> Result<(), yopmail_client::Error> {
     let mailbox = "mytempbox";
+    let mut client = YopmailClient::new(mailbox)?;
+
     // List first page
-    let messages = check_inbox_page(mailbox, 1).await?;
+    let messages = client.check_inbox_page(1).await?;
 
     // Fetch plain text
-    let body = get_message_by_id(mailbox, &messages[0].id).await?;
+    let body = client.get_message_by_id(&messages[0].id).await?;
 
     // Fetch full content (html/raw/attachments)
-    let content = get_message_by_id_full(mailbox, &messages[0].id).await?;
+    let content = client.get_message_by_id_full(&messages[0].id).await?;
     for att in &content.attachments {
         println!(
             "attachment: {} -> {}",
@@ -40,8 +39,6 @@ async fn main() -> Result<(), yopmail_client::Error> {
     }
 
     // Download an attachment
-    let mut client = YopmailClient::new(mailbox)?;
-    client.open_inbox().await?;
     let bytes = client.download_attachment(&content.attachments[0]).await?;
 
     // Generate a random mailbox name
@@ -76,7 +73,7 @@ cargo run --example cli -- random --len 10
 Commands: `list`, `fetch`, `send`, `rss-url`, `rss-data`, `info`, `random`. Use `--proxy` to tunnel through a proxy.
 
 ## Features
-- Inbox: list with paging (`check_inbox_page`, `list_messages`).
+- Inbox: list with paging (`YopmailClient::check_inbox_page`, `list_messages`).
 - Fetch: text/HTML/raw plus attachment discovery (`get_message_by_id_full`, `fetch_message_full`).
 - Attachments: download via `download_attachment`.
 - Send: post to another `@yopmail.com` address.

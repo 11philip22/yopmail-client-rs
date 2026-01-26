@@ -1,10 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::fs;
 use std::path::PathBuf;
-use yopmail_client::{
-    check_inbox_page_with, generate_random_mailbox, get_inbox_summary_with, get_rss_feed_data_with,
-    get_rss_feed_url_with, Error, YopmailClient, YopmailClientBuilder,
-};
+use yopmail_client::{generate_random_mailbox, Error, YopmailClient, YopmailClientBuilder};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -81,10 +78,8 @@ async fn main() -> Result<(), Error> {
     match cli.command {
         Commands::List { page, details } => {
             let mailbox = require_mailbox(&mailbox_opt);
-            let messages = check_inbox_page_with(&mailbox, page, |builder| {
-                apply_proxy(builder, &cli.proxy)
-            })
-            .await?;
+            let mut client = build_client(&mailbox, &cli.proxy)?;
+            let messages = client.check_inbox_page(page).await?;
             if messages.is_empty() {
                 println!("No messages found.");
             } else {
@@ -165,18 +160,14 @@ async fn main() -> Result<(), Error> {
         }
         Commands::RssUrl { mailbox } => {
             let fallback = require_mailbox(&mailbox_opt);
-            let url = get_rss_feed_url_with(mailbox.as_deref().unwrap_or(&fallback), |builder| {
-                apply_proxy(builder, &cli.proxy)
-            })?;
+            let client = build_client(&fallback, &cli.proxy)?;
+            let url = client.get_rss_feed_url(mailbox.as_deref());
             println!("{url}");
         }
         Commands::RssData { mailbox } => {
             let fallback = require_mailbox(&mailbox_opt);
-            let (url, items) =
-                get_rss_feed_data_with(mailbox.as_deref().unwrap_or(&fallback), |builder| {
-                    apply_proxy(builder, &cli.proxy)
-                })
-                .await?;
+            let mut client = build_client(&fallback, &cli.proxy)?;
+            let (url, items) = client.get_rss_feed_data(mailbox.as_deref()).await?;
             println!("RSS URL: {url}");
             println!("{} message(s)", items.len());
             for (idx, item) in items.iter().enumerate() {
@@ -187,10 +178,8 @@ async fn main() -> Result<(), Error> {
         }
         Commands::Info => {
             let mailbox = require_mailbox(&mailbox_opt);
-            let (count, latest) = get_inbox_summary_with(&mailbox, |builder| {
-                apply_proxy(builder, &cli.proxy)
-            })
-            .await?;
+            let mut client = build_client(&mailbox, &cli.proxy)?;
+            let (count, latest) = client.get_inbox_summary().await?;
             let display = if mailbox.contains('@') {
                 mailbox.clone()
             } else {
