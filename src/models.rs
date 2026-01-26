@@ -1,5 +1,4 @@
 use serde::Serialize;
-use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Message {
@@ -31,25 +30,4 @@ pub struct MessageContent {
     pub html: String,
     pub raw: String,
     pub attachments: Vec<Attachment>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Config {
-    pub base_url: String,
-    pub timeout: Duration,
-    pub proxy_url: Option<String>,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            base_url: crate::constants::BASE_URL.to_string(),
-            timeout: crate::constants::default_timeout(),
-            proxy_url: None,
-        }
-    }
-}
-
-pub fn default_config() -> Config {
-    Config::default()
 }

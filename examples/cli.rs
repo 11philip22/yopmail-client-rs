@@ -2,8 +2,8 @@ use clap::{Parser, Subcommand};
 use std::fs;
 use std::path::PathBuf;
 use yopmail_client::{
-    check_inbox_page, generate_random_mailbox, get_inbox_summary, get_rss_feed_data,
-    get_rss_feed_url, Error, YopmailClient,
+    check_inbox_page_with, generate_random_mailbox, get_inbox_summary_with, get_rss_feed_data_with,
+    get_rss_feed_url_with, Error, YopmailClient, YopmailClientBuilder,
 };
 
 #[derive(Parser, Debug)]
@@ -76,13 +76,15 @@ enum Commands {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let cli = Cli::parse();
-    let config = build_config(cli.proxy.clone());
     let mailbox_opt = cli.mailbox.clone();
 
     match cli.command {
         Commands::List { page, details } => {
             let mailbox = require_mailbox(&mailbox_opt);
-            let messages = check_inbox_page(&mailbox, page, config.clone()).await?;
+            let messages = check_inbox_page_with(&mailbox, page, |builder| {
+                apply_proxy(builder, &cli.proxy)
+            })
+            .await?;
             if messages.is_empty() {
                 println!("No messages found.");
             } else {
@@ -109,7 +111,7 @@ async fn main() -> Result<(), Error> {
             download_attachments,
         } => {
             let mailbox = require_mailbox(&mailbox_opt);
-            let mut client = YopmailClient::new(&mailbox, config.clone())?;
+            let mut client = build_client(&mailbox, &cli.proxy)?;
             client.open_inbox().await?;
             let content = client.fetch_message_full(&id).await?;
 
@@ -156,21 +158,25 @@ async fn main() -> Result<(), Error> {
         }
         Commands::Send { to, subject, body } => {
             let mailbox = require_mailbox(&mailbox_opt);
-            let mut client = YopmailClient::new(&mailbox, config.clone())?;
+            let mut client = build_client(&mailbox, &cli.proxy)?;
             client.open_inbox().await?;
             client.send_message(&to, &subject, &body).await?;
             println!("Message sent to {}", to);
         }
         Commands::RssUrl { mailbox } => {
             let fallback = require_mailbox(&mailbox_opt);
-            let url =
-                get_rss_feed_url(mailbox.as_deref().unwrap_or(&fallback), config.clone())?;
+            let url = get_rss_feed_url_with(mailbox.as_deref().unwrap_or(&fallback), |builder| {
+                apply_proxy(builder, &cli.proxy)
+            })?;
             println!("{url}");
         }
         Commands::RssData { mailbox } => {
             let fallback = require_mailbox(&mailbox_opt);
             let (url, items) =
-                get_rss_feed_data(mailbox.as_deref().unwrap_or(&fallback), config.clone()).await?;
+                get_rss_feed_data_with(mailbox.as_deref().unwrap_or(&fallback), |builder| {
+                    apply_proxy(builder, &cli.proxy)
+                })
+                .await?;
             println!("RSS URL: {url}");
             println!("{} message(s)", items.len());
             for (idx, item) in items.iter().enumerate() {
@@ -181,7 +187,10 @@ async fn main() -> Result<(), Error> {
         }
         Commands::Info => {
             let mailbox = require_mailbox(&mailbox_opt);
-            let (count, latest) = get_inbox_summary(&mailbox, config.clone()).await?;
+            let (count, latest) = get_inbox_summary_with(&mailbox, |builder| {
+                apply_proxy(builder, &cli.proxy)
+            })
+            .await?;
             let display = if mailbox.contains('@') {
                 mailbox.clone()
             } else {
@@ -205,10 +214,20 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn build_config(proxy: Option<String>) -> Option<yopmail_client::models::Config> {
-    let mut cfg = yopmail_client::models::Config::default();
-    cfg.proxy_url = proxy;
-    Some(cfg)
+fn build_client(mailbox: &str, proxy: &Option<String>) -> Result<YopmailClient, Error> {
+    let builder = apply_proxy(YopmailClient::builder(mailbox), proxy);
+    builder.build()
+}
+
+fn apply_proxy(
+    builder: YopmailClientBuilder,
+    proxy: &Option<String>,
+) -> YopmailClientBuilder {
+    if let Some(proxy) = proxy {
+        builder.proxy_url(proxy)
+    } else {
+        builder
+    }
 }
 
 fn require_mailbox(mailbox: &Option<String>) -> String {

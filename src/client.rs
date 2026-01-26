@@ -1,6 +1,6 @@
 use crate::constants::*;
 use crate::error::{Error, Result};
-use crate::models::{Attachment, Config, Message, MessageContent, RssItem};
+use crate::models::{Attachment, Message, MessageContent, RssItem};
 use regex::Regex;
 use reqwest::{
     cookie::Jar,
@@ -12,6 +12,7 @@ use scraper::{Html, Selector};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::SystemTime;
+use std::time::Duration;
 
 fn parse_mailbox(mailbox: &str) -> (String, String) {
     if let Some((local, domain)) = mailbox.split_once('@') {
@@ -39,44 +40,84 @@ fn build_headers(base: &[(&str, &str)], extras: &[(&str, &str)]) -> HeaderMap {
 pub struct YopmailClient {
     mailbox: String,
     domain: String,
-    config: Config,
+    base_url: String,
     jar: Arc<Jar>,
     client: Client,
     yp_token: Option<String>,
 }
 
-impl YopmailClient {
-    pub fn new(mailbox: impl AsRef<str>, config: Option<Config>) -> Result<Self> {
-        let (mailbox, domain) = parse_mailbox(mailbox.as_ref());
-        let cfg = config.unwrap_or_default();
+pub struct YopmailClientBuilder {
+    mailbox: String,
+    base_url: String,
+    timeout: Duration,
+    proxy_url: Option<String>,
+}
+
+impl YopmailClientBuilder {
+    pub fn new(mailbox: impl AsRef<str>) -> Self {
+        Self {
+            mailbox: mailbox.as_ref().to_string(),
+            base_url: BASE_URL.to_string(),
+            timeout: default_timeout(),
+            proxy_url: None,
+        }
+    }
+
+    pub fn base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = base_url.into();
+        self
+    }
+
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    pub fn proxy_url(mut self, proxy_url: impl Into<String>) -> Self {
+        self.proxy_url = Some(proxy_url.into());
+        self
+    }
+
+    pub fn build(self) -> Result<YopmailClient> {
+        let (mailbox, domain) = parse_mailbox(&self.mailbox);
         let jar = Arc::new(Jar::default());
 
         let mut builder = ClientBuilder::new()
             .cookie_provider(jar.clone())
-            .timeout(cfg.timeout)
+            .timeout(self.timeout)
             .default_headers(default_headers());
 
-        if let Some(proxy) = &cfg.proxy_url {
+        if let Some(proxy) = &self.proxy_url {
             builder = builder.proxy(reqwest::Proxy::all(proxy).map_err(Error::Http)?);
         }
 
         let client = builder.build().map_err(Error::Http)?;
 
-        Ok(Self {
+        Ok(YopmailClient {
             mailbox,
             domain,
-            config: cfg,
+            base_url: self.base_url,
             jar,
             client,
             yp_token: None,
         })
+    }
+}
+
+impl YopmailClient {
+    pub fn builder(mailbox: impl AsRef<str>) -> YopmailClientBuilder {
+        YopmailClientBuilder::new(mailbox)
+    }
+
+    pub fn new(mailbox: impl AsRef<str>) -> Result<Self> {
+        YopmailClientBuilder::new(mailbox).build()
     }
 
     pub async fn open_inbox(&mut self) -> Result<()> {
         self.set_default_cookies();
 
         // Use the same flow as the web UI: load the login page (with yp token) then post the form
-        let login_url = format!("{}/en/?login={}", self.config.base_url, self.mailbox);
+        let login_url = format!("{}/en/?login={}", self.base_url, self.mailbox);
         let resp = self.client.get(&login_url).send().await?;
         let body = resp.text().await?;
 
@@ -94,7 +135,7 @@ impl YopmailClient {
             ];
             let _ = self
                 .client
-                .post(format!("{}/en/", self.config.base_url))
+                .post(format!("{}/en/", self.base_url))
                 .headers(default_headers())
                 .form(&form)
                 .send()
@@ -127,7 +168,7 @@ impl YopmailClient {
         ];
 
         let headers = build_headers(DEFAULT_HEADERS, INBOX_HEADERS);
-        let url = format!("{}/inbox", self.config.base_url);
+        let url = format!("{}/inbox", self.base_url);
         let resp = self
             .client
             .get(&url)
@@ -159,7 +200,7 @@ impl YopmailClient {
         self.set_default_cookies();
 
         let headers = build_headers(DEFAULT_HEADERS, MAIL_HEADERS);
-        let mail_url = format!("{}/en/mail", self.config.base_url);
+        let mail_url = format!("{}/en/mail", self.base_url);
         let yp = self
             .yp_token
             .clone()
@@ -223,7 +264,7 @@ impl YopmailClient {
             let status = resp.status();
             let body = resp.text().await?;
             if status.is_success() {
-                let attachments = extract_attachments(&body, &self.config.base_url);
+                let attachments = extract_attachments(&body, &self.base_url);
                 let html = extract_message_html(&body);
                 return Ok(MessageContent {
                     text: extract_message_body(&body),
@@ -266,7 +307,7 @@ impl YopmailClient {
         ];
 
         let headers = build_headers(DEFAULT_HEADERS, SEND_HEADERS);
-        let url = format!("{}/writepost", self.config.base_url);
+        let url = format!("{}/writepost", self.base_url);
         let resp = self
             .client
             .post(&url)
@@ -307,7 +348,7 @@ impl YopmailClient {
         self.set_default_cookies();
 
         let headers = build_headers(DEFAULT_HEADERS, MAIL_HEADERS);
-        let url = normalize_url(&attachment.url, &self.config.base_url);
+        let url = normalize_url(&attachment.url, &self.base_url);
         let resp = self.client.get(url).headers(headers).send().await?;
         let status = resp.status();
         let bytes = resp.bytes().await?;
@@ -322,7 +363,7 @@ impl YopmailClient {
 
     pub fn get_rss_feed_url(&self, mailbox: Option<&str>) -> String {
         let target = mailbox.unwrap_or(&self.mailbox);
-        format!("{}/rss?login={}", self.config.base_url, target)
+        format!("{}/rss?login={}", self.base_url, target)
     }
 
     pub async fn get_rss_feed_data(
@@ -330,11 +371,11 @@ impl YopmailClient {
         mailbox: Option<&str>,
     ) -> Result<(String, Vec<RssItem>)> {
         let target = mailbox.unwrap_or(&self.mailbox);
-        let gen_url = format!("{}/gen-rss?login={}", self.config.base_url, target);
+        let gen_url = format!("{}/gen-rss?login={}", self.base_url, target);
 
         let resp = self.client.get(&gen_url).send().await?;
         let body = resp.text().await?;
-        let rss_url = extract_rss_url(&body, &self.config.base_url, target);
+        let rss_url = extract_rss_url(&body, &self.base_url, target);
 
         let rss_resp = self.client.get(&rss_url).send().await?;
         let rss_body = rss_resp.text().await?;
@@ -344,7 +385,6 @@ impl YopmailClient {
 
     fn set_default_cookies(&self) {
         let base: reqwest::Url = self
-            .config
             .base_url
             .parse()
             .expect("base URL should be valid");
@@ -607,8 +647,24 @@ fn find_email(text: &str) -> Option<String> {
         .map(|m| m.as_str().to_string())
 }
 
-pub async fn check_inbox(mailbox: &str, config: Option<Config>) -> Result<Vec<Message>> {
-    let mut client = YopmailClient::new(mailbox, config)?;
+fn build_client_with<F>(mailbox: &str, configure: F) -> Result<YopmailClient>
+where
+    F: FnOnce(YopmailClientBuilder) -> YopmailClientBuilder,
+{
+    configure(YopmailClient::builder(mailbox)).build()
+}
+
+pub async fn check_inbox(mailbox: &str) -> Result<Vec<Message>> {
+    let mut client = YopmailClient::new(mailbox)?;
+    client.open_inbox().await?;
+    client.list_messages(1).await
+}
+
+pub async fn check_inbox_with<F>(mailbox: &str, configure: F) -> Result<Vec<Message>>
+where
+    F: FnOnce(YopmailClientBuilder) -> YopmailClientBuilder,
+{
+    let mut client = build_client_with(mailbox, configure)?;
     client.open_inbox().await?;
     client.list_messages(1).await
 }
@@ -616,45 +672,82 @@ pub async fn check_inbox(mailbox: &str, config: Option<Config>) -> Result<Vec<Me
 pub async fn check_inbox_page(
     mailbox: &str,
     page: i32,
-    config: Option<Config>,
 ) -> Result<Vec<Message>> {
-    let mut client = YopmailClient::new(mailbox, config)?;
+    let mut client = YopmailClient::new(mailbox)?;
     client.open_inbox().await?;
     client.list_messages(page).await
 }
 
-pub async fn get_message_by_id(
+pub async fn check_inbox_page_with<F>(
     mailbox: &str,
-    message_id: &str,
-    config: Option<Config>,
-) -> Result<String> {
-    let mut client = YopmailClient::new(mailbox, config)?;
+    page: i32,
+    configure: F,
+) -> Result<Vec<Message>>
+where
+    F: FnOnce(YopmailClientBuilder) -> YopmailClientBuilder,
+{
+    let mut client = build_client_with(mailbox, configure)?;
+    client.open_inbox().await?;
+    client.list_messages(page).await
+}
+
+pub async fn get_message_by_id(mailbox: &str, message_id: &str) -> Result<String> {
+    let mut client = YopmailClient::new(mailbox)?;
     client.open_inbox().await?;
     client.fetch_message(message_id).await
 }
 
-pub async fn get_message_by_id_full(
+pub async fn get_message_by_id_with<F>(
     mailbox: &str,
     message_id: &str,
-    config: Option<Config>,
-) -> Result<MessageContent> {
-    let mut client = YopmailClient::new(mailbox, config)?;
+    configure: F,
+) -> Result<String>
+where
+    F: FnOnce(YopmailClientBuilder) -> YopmailClientBuilder,
+{
+    let mut client = build_client_with(mailbox, configure)?;
+    client.open_inbox().await?;
+    client.fetch_message(message_id).await
+}
+
+pub async fn get_message_by_id_full(mailbox: &str, message_id: &str) -> Result<MessageContent> {
+    let mut client = YopmailClient::new(mailbox)?;
     client.open_inbox().await?;
     client.fetch_message_full(message_id).await
 }
 
-pub async fn get_last_message(mailbox: &str, config: Option<Config>) -> Result<Option<Message>> {
-    let mut client = YopmailClient::new(mailbox, config)?;
+pub async fn get_message_by_id_full_with<F>(
+    mailbox: &str,
+    message_id: &str,
+    configure: F,
+) -> Result<MessageContent>
+where
+    F: FnOnce(YopmailClientBuilder) -> YopmailClientBuilder,
+{
+    let mut client = build_client_with(mailbox, configure)?;
+    client.open_inbox().await?;
+    client.fetch_message_full(message_id).await
+}
+
+pub async fn get_last_message(mailbox: &str) -> Result<Option<Message>> {
+    let mut client = YopmailClient::new(mailbox)?;
     client.open_inbox().await?;
     let messages = client.list_messages(1).await?;
     Ok(messages.into_iter().next())
 }
 
-pub async fn get_last_message_content(
-    mailbox: &str,
-    config: Option<Config>,
-) -> Result<Option<String>> {
-    let mut client = YopmailClient::new(mailbox, config)?;
+pub async fn get_last_message_with<F>(mailbox: &str, configure: F) -> Result<Option<Message>>
+where
+    F: FnOnce(YopmailClientBuilder) -> YopmailClientBuilder,
+{
+    let mut client = build_client_with(mailbox, configure)?;
+    client.open_inbox().await?;
+    let messages = client.list_messages(1).await?;
+    Ok(messages.into_iter().next())
+}
+
+pub async fn get_last_message_content(mailbox: &str) -> Result<Option<String>> {
+    let mut client = YopmailClient::new(mailbox)?;
     client.open_inbox().await?;
     let messages = client.list_messages(1).await?;
     if let Some(msg) = messages.first() {
@@ -665,25 +758,79 @@ pub async fn get_last_message_content(
     }
 }
 
-pub async fn get_inbox_count(mailbox: &str, config: Option<Config>) -> Result<usize> {
-    let mut client = YopmailClient::new(mailbox, config)?;
+pub async fn get_last_message_content_with<F>(
+    mailbox: &str,
+    configure: F,
+) -> Result<Option<String>>
+where
+    F: FnOnce(YopmailClientBuilder) -> YopmailClientBuilder,
+{
+    let mut client = build_client_with(mailbox, configure)?;
+    client.open_inbox().await?;
+    let messages = client.list_messages(1).await?;
+    if let Some(msg) = messages.first() {
+        let content = client.fetch_message(&msg.id).await?;
+        Ok(Some(content))
+    } else {
+        Ok(None)
+    }
+}
+
+pub async fn get_inbox_count(mailbox: &str) -> Result<usize> {
+    let mut client = YopmailClient::new(mailbox)?;
     client.open_inbox().await?;
     let messages = client.list_messages(1).await?;
     Ok(messages.len())
 }
 
-pub async fn get_inbox_count_page(mailbox: &str, page: i32, config: Option<Config>) -> Result<usize> {
-    let mut client = YopmailClient::new(mailbox, config)?;
+pub async fn get_inbox_count_with<F>(mailbox: &str, configure: F) -> Result<usize>
+where
+    F: FnOnce(YopmailClientBuilder) -> YopmailClientBuilder,
+{
+    let mut client = build_client_with(mailbox, configure)?;
+    client.open_inbox().await?;
+    let messages = client.list_messages(1).await?;
+    Ok(messages.len())
+}
+
+pub async fn get_inbox_count_page(mailbox: &str, page: i32) -> Result<usize> {
+    let mut client = YopmailClient::new(mailbox)?;
     client.open_inbox().await?;
     let messages = client.list_messages(page).await?;
     Ok(messages.len())
 }
 
-pub async fn get_inbox_summary(
+pub async fn get_inbox_count_page_with<F>(
     mailbox: &str,
-    config: Option<Config>,
-) -> Result<(usize, Option<Message>)> {
-    let mut client = YopmailClient::new(mailbox, config)?;
+    page: i32,
+    configure: F,
+) -> Result<usize>
+where
+    F: FnOnce(YopmailClientBuilder) -> YopmailClientBuilder,
+{
+    let mut client = build_client_with(mailbox, configure)?;
+    client.open_inbox().await?;
+    let messages = client.list_messages(page).await?;
+    Ok(messages.len())
+}
+
+pub async fn get_inbox_summary(mailbox: &str) -> Result<(usize, Option<Message>)> {
+    let mut client = YopmailClient::new(mailbox)?;
+    client.open_inbox().await?;
+    let messages = client.list_messages(1).await?;
+    let count = messages.len();
+    let latest = messages.get(0).cloned();
+    Ok((count, latest))
+}
+
+pub async fn get_inbox_summary_with<F>(
+    mailbox: &str,
+    configure: F,
+) -> Result<(usize, Option<Message>)>
+where
+    F: FnOnce(YopmailClientBuilder) -> YopmailClientBuilder,
+{
+    let mut client = build_client_with(mailbox, configure)?;
     client.open_inbox().await?;
     let messages = client.list_messages(1).await?;
     let count = messages.len();
@@ -694,9 +841,8 @@ pub async fn get_inbox_summary(
 pub async fn get_inbox_summary_page(
     mailbox: &str,
     page: i32,
-    config: Option<Config>,
 ) -> Result<(usize, Option<Message>)> {
-    let mut client = YopmailClient::new(mailbox, config)?;
+    let mut client = YopmailClient::new(mailbox)?;
     client.open_inbox().await?;
     let messages = client.list_messages(page).await?;
     let count = messages.len();
@@ -704,13 +850,48 @@ pub async fn get_inbox_summary_page(
     Ok((count, latest))
 }
 
-pub fn get_rss_feed_url(mailbox: &str, config: Option<Config>) -> Result<String> {
-    let client = YopmailClient::new(mailbox, config)?;
+pub async fn get_inbox_summary_page_with<F>(
+    mailbox: &str,
+    page: i32,
+    configure: F,
+) -> Result<(usize, Option<Message>)>
+where
+    F: FnOnce(YopmailClientBuilder) -> YopmailClientBuilder,
+{
+    let mut client = build_client_with(mailbox, configure)?;
+    client.open_inbox().await?;
+    let messages = client.list_messages(page).await?;
+    let count = messages.len();
+    let latest = messages.get(0).cloned();
+    Ok((count, latest))
+}
+
+pub fn get_rss_feed_url(mailbox: &str) -> Result<String> {
+    let client = YopmailClient::new(mailbox)?;
     Ok(client.get_rss_feed_url(None))
 }
 
-pub async fn get_rss_feed_data(mailbox: &str, config: Option<Config>) -> Result<(String, Vec<RssItem>)> {
-    let mut client = YopmailClient::new(mailbox, config)?;
+pub fn get_rss_feed_url_with<F>(mailbox: &str, configure: F) -> Result<String>
+where
+    F: FnOnce(YopmailClientBuilder) -> YopmailClientBuilder,
+{
+    let client = build_client_with(mailbox, configure)?;
+    Ok(client.get_rss_feed_url(None))
+}
+
+pub async fn get_rss_feed_data(mailbox: &str) -> Result<(String, Vec<RssItem>)> {
+    let mut client = YopmailClient::new(mailbox)?;
+    client.get_rss_feed_data(None).await
+}
+
+pub async fn get_rss_feed_data_with<F>(
+    mailbox: &str,
+    configure: F,
+) -> Result<(String, Vec<RssItem>)>
+where
+    F: FnOnce(YopmailClientBuilder) -> YopmailClientBuilder,
+{
+    let mut client = build_client_with(mailbox, configure)?;
     client.get_rss_feed_data(None).await
 }
 

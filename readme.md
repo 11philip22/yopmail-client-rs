@@ -17,22 +17,20 @@ cargo add yopmail-client
 ```rust
 use yopmail_client::{
     check_inbox_page, get_message_by_id, get_message_by_id_full, generate_random_mailbox,
-    YopmailClient, Config,
+    YopmailClient,
 };
 
 #[tokio::main]
 async fn main() -> Result<(), yopmail_client::Error> {
     let mailbox = "mytempbox";
-    let cfg = Config::default();
-
     // List first page
-    let messages = check_inbox_page(mailbox, 1, Some(cfg.clone())).await?;
+    let messages = check_inbox_page(mailbox, 1).await?;
 
     // Fetch plain text
-    let body = get_message_by_id(mailbox, &messages[0].id, Some(cfg.clone())).await?;
+    let body = get_message_by_id(mailbox, &messages[0].id).await?;
 
     // Fetch full content (html/raw/attachments)
-    let content = get_message_by_id_full(mailbox, &messages[0].id, Some(cfg.clone())).await?;
+    let content = get_message_by_id_full(mailbox, &messages[0].id).await?;
     for att in &content.attachments {
         println!(
             "attachment: {} -> {}",
@@ -42,7 +40,7 @@ async fn main() -> Result<(), yopmail_client::Error> {
     }
 
     // Download an attachment
-    let mut client = YopmailClient::new(mailbox, Some(cfg.clone()))?;
+    let mut client = YopmailClient::new(mailbox)?;
     client.open_inbox().await?;
     let bytes = client.download_attachment(&content.attachments[0]).await?;
 
@@ -52,6 +50,17 @@ async fn main() -> Result<(), yopmail_client::Error> {
 
     Ok(())
 }
+```
+
+Customize the client with the builder when you need a proxy, timeout, or base URL override:
+```rust
+use std::time::Duration;
+use yopmail_client::YopmailClient;
+
+let mut client = YopmailClient::builder("mytempbox")
+    .proxy_url("http://127.0.0.1:8080")
+    .timeout(Duration::from_secs(20))
+    .build()?;
 ```
 
 ## CLI (examples/cli.rs)
