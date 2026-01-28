@@ -1,11 +1,13 @@
+//! Yopmail client for fetching and sending disposable email.
+//!
+//! This crate exposes a high-level client plus models and error types used by the API.
+
 pub mod client;
 pub mod constants;
 pub mod error;
 pub mod models;
 
-pub use client::{
-    generate_random_mailbox, YopmailClient, YopmailClientBuilder,
-};
+pub use client::{generate_random_mailbox, YopmailClient, YopmailClientBuilder};
 pub use constants::{
     default_headers, default_timeout, ALT_DOMAINS, DEFAULT_DOMAIN, DEFAULT_HEADERS,
     DEFAULT_TIMEOUT_SECS,

@@ -1,3 +1,5 @@
+//! Client implementation and helper utilities.
+
 use crate::constants::*;
 use crate::error::{Error, Result};
 use crate::models::{Attachment, Message, MessageContent, RssItem};
@@ -37,6 +39,7 @@ fn build_headers(base: &[(&str, &str)], extras: &[(&str, &str)]) -> HeaderMap {
     headers
 }
 
+/// High-level client for interacting with a Yopmail mailbox.
 pub struct YopmailClient {
     mailbox: String,
     domain: String,
@@ -46,6 +49,7 @@ pub struct YopmailClient {
     yp_token: Option<String>,
 }
 
+/// Builder for configuring a [`YopmailClient`].
 pub struct YopmailClientBuilder {
     mailbox: String,
     base_url: String,
@@ -54,6 +58,7 @@ pub struct YopmailClientBuilder {
 }
 
 impl YopmailClientBuilder {
+    /// Create a builder for the provided mailbox.
     pub fn new(mailbox: impl AsRef<str>) -> Self {
         Self {
             mailbox: mailbox.as_ref().to_string(),
@@ -63,21 +68,25 @@ impl YopmailClientBuilder {
         }
     }
 
+    /// Override the base URL used for requests.
     pub fn base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
         self
     }
 
+    /// Set the HTTP request timeout.
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
 
+    /// Route requests through an HTTP proxy.
     pub fn proxy_url(mut self, proxy_url: impl Into<String>) -> Self {
         self.proxy_url = Some(proxy_url.into());
         self
     }
 
+    /// Build the configured client.
     pub fn build(self) -> Result<YopmailClient> {
         let (mailbox, domain) = parse_mailbox(&self.mailbox);
         let jar = Arc::new(Jar::default());
@@ -105,14 +114,17 @@ impl YopmailClientBuilder {
 }
 
 impl YopmailClient {
+    /// Start a builder for the provided mailbox.
     pub fn builder(mailbox: impl AsRef<str>) -> YopmailClientBuilder {
         YopmailClientBuilder::new(mailbox)
     }
 
+    /// Build a client with default settings.
     pub fn new(mailbox: impl AsRef<str>) -> Result<Self> {
         YopmailClientBuilder::new(mailbox).build()
     }
 
+    /// Initialize the mailbox session and cookies.
     pub async fn open_inbox(&mut self) -> Result<()> {
         self.set_default_cookies();
 
@@ -144,6 +156,7 @@ impl YopmailClient {
         Ok(())
     }
 
+    /// List messages for the requested page (1-based).
     pub async fn list_messages(&mut self, page: i32) -> Result<Vec<Message>> {
         if self.yp_token.is_none() {
             self.open_inbox().await?;
@@ -186,11 +199,13 @@ impl YopmailClient {
         Ok(messages)
     }
 
+    /// Fetch the plaintext body for a message ID.
     pub async fn fetch_message(&mut self, message_id: &str) -> Result<String> {
         let content = self.fetch_message_full(message_id).await?;
         Ok(content.text)
     }
 
+    /// Fetch full message content, including HTML and attachments.
     pub async fn fetch_message_full(&mut self, message_id: &str) -> Result<MessageContent> {
         if self.yp_token.is_none() {
             self.open_inbox().await?;
@@ -287,6 +302,7 @@ impl YopmailClient {
         })
     }
 
+    /// Send a message from this mailbox to a Yopmail recipient.
     pub async fn send_message(&mut self, to: &str, subject: &str, body: &str) -> Result<()> {
         if !to.ends_with("@yopmail.com") {
             return Err(Error::InvalidRecipient);
@@ -335,21 +351,25 @@ impl YopmailClient {
         }
     }
 
+    /// Fetch the first page and return the count plus the messages.
     pub async fn get_inbox_info(&mut self) -> Result<(usize, Vec<Message>)> {
         let messages = self.list_messages(1).await?;
         let count = messages.len();
         Ok((count, messages))
     }
 
+    /// Convenience wrapper for `list_messages(1)`.
     pub async fn check_inbox(&mut self) -> Result<Vec<Message>> {
         self.list_messages(1).await
     }
 
+    /// Return the newest message from the first page, if any.
     pub async fn get_last_message(&mut self) -> Result<Option<Message>> {
         let messages = self.list_messages(1).await?;
         Ok(messages.into_iter().next())
     }
 
+    /// Return the plaintext content of the newest message, if any.
     pub async fn get_last_message_content(&mut self) -> Result<Option<String>> {
         let messages = self.list_messages(1).await?;
         if let Some(msg) = messages.first() {
@@ -360,16 +380,19 @@ impl YopmailClient {
         }
     }
 
+    /// Count messages on the first page.
     pub async fn get_inbox_count(&mut self) -> Result<usize> {
         let messages = self.list_messages(1).await?;
         Ok(messages.len())
     }
 
+    /// Count messages on the requested page.
     pub async fn get_inbox_count_page(&mut self, page: i32) -> Result<usize> {
         let messages = self.list_messages(page).await?;
         Ok(messages.len())
     }
 
+    /// Return the count and newest message from the first page.
     pub async fn get_inbox_summary(&mut self) -> Result<(usize, Option<Message>)> {
         let messages = self.list_messages(1).await?;
         let count = messages.len();
@@ -377,6 +400,7 @@ impl YopmailClient {
         Ok((count, latest))
     }
 
+    /// Return the count and newest message from the requested page.
     pub async fn get_inbox_summary_page(&mut self, page: i32) -> Result<(usize, Option<Message>)> {
         let messages = self.list_messages(page).await?;
         let count = messages.len();
@@ -384,6 +408,7 @@ impl YopmailClient {
         Ok((count, latest))
     }
 
+    /// Download an attachment by URL into memory.
     pub async fn download_attachment(&mut self, attachment: &Attachment) -> Result<Vec<u8>> {
         if self.yp_token.is_none() {
             self.open_inbox().await?;
@@ -404,11 +429,13 @@ impl YopmailClient {
         Ok(bytes.to_vec())
     }
 
+    /// Build the RSS feed URL for the provided mailbox (or the client mailbox).
     pub fn get_rss_feed_url(&self, mailbox: Option<&str>) -> String {
         let target = mailbox.unwrap_or(&self.mailbox);
         format!("{}/rss?login={}", self.base_url, target)
     }
 
+    /// Generate RSS data and parse items for the mailbox.
     pub async fn get_rss_feed_data(
         &mut self,
         mailbox: Option<&str>,

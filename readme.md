@@ -3,6 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/yopmail-client.svg)](https://crates.io/crates/yopmail-client)
 [![Documentation](https://docs.rs/yopmail-client/badge.svg)](https://docs.rs/yopmail-client)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/woldp001/guerrillamail-client-rs/pulls)
 
 ![YOPmail](https://yopmail.com/logo.png)
 
@@ -95,5 +96,8 @@ Commands: `list`, `fetch`, `send`, `rss-url`, `rss-data`, `info`, `random`. Use 
 ## Acknowledgements
 This project is a Rust port of the [Python yopmail-client](https://pypi.org/project/yopmail-client/1.2.3/). This port does not require a license key 😉
 
+## Support
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/11philip22)
+
 ## License
-This project is licensed under the MIT License - see the [license](license) file for details.
+MIT License; see the [license](license) file for details.
