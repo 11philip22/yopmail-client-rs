@@ -100,4 +100,4 @@ This project is a Rust port of the [Python yopmail-client](https://pypi.org/proj
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/11philip22)
 
 ## License
-MIT License; see the [license](license) file for details.
+This project is licensed under the MIT License; see the [license](license) file for details.
