@@ -1,3 +1,8 @@
+//! High-level async client for interacting with YOPmail via its web endpoints.
+//!
+//! The client is intentionally "browser-like": it maintains a cookie jar, sends default headers,
+//! and extracts a `yp` token from the login page. Most operations will automatically call
+//! [`YopmailClient::open_inbox`] the first time they need a session.
 use crate::constants::*;
 use crate::error::{Error, Result};
 use crate::models::{Attachment, Message, MessageContent, RssItem};
@@ -37,6 +42,10 @@ fn build_headers(base: &[(&str, &str)], extras: &[(&str, &str)]) -> HeaderMap {
     headers
 }
 
+/// A stateful YOPmail client backed by `reqwest`.
+///
+/// The client maintains a cookie jar (to emulate the web UI) and an extracted `yp` token used by
+/// inbox/mail endpoints. Methods take `&mut self` because session state is refreshed on demand.
 pub struct YopmailClient {
     mailbox: String,
     domain: String,
@@ -46,6 +55,10 @@ pub struct YopmailClient {
     yp_token: Option<String>,
 }
 
+/// Builder for [`YopmailClient`].
+///
+/// This configures the underlying HTTP client (base URL, timeout, optional proxy) and constructs a
+/// `reqwest::Client` with a shared cookie jar.
 pub struct YopmailClientBuilder {
     mailbox: String,
     base_url: String,
@@ -54,6 +67,11 @@ pub struct YopmailClientBuilder {
 }
 
 impl YopmailClientBuilder {
+    /// Create a builder for `mailbox`.
+    ///
+    /// The mailbox may be provided as `local` or `local@domain`.
+    /// - `local` and `domain` are trimmed and lowercased.
+    /// - If no domain is provided, [`DEFAULT_DOMAIN`] is used.
     pub fn new(mailbox: impl AsRef<str>) -> Self {
         Self {
             mailbox: mailbox.as_ref().to_string(),
@@ -63,21 +81,33 @@ impl YopmailClientBuilder {
         }
     }
 
+    /// Override the base URL (defaults to [`BASE_URL`]).
+    ///
+    /// This is primarily useful for testing or for alternative frontends that mimic YOPmail's
+    /// endpoints.
     pub fn base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
         self
     }
 
+    /// Override the request timeout (defaults to [`default_timeout`]).
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
 
+    /// Configure an HTTP proxy URL for the underlying `reqwest` client.
+    ///
+    /// The value is passed to `reqwest::Proxy::all`.
     pub fn proxy_url(mut self, proxy_url: impl Into<String>) -> Self {
         self.proxy_url = Some(proxy_url.into());
         self
     }
 
+    /// Build the [`YopmailClient`].
+    ///
+    /// This parses and normalizes the mailbox, builds a `reqwest::Client` with cookies enabled,
+    /// and initializes session state (no network requests are made).
     pub fn build(self) -> Result<YopmailClient> {
         let (mailbox, domain) = parse_mailbox(&self.mailbox);
         let jar = Arc::new(Jar::default());
@@ -105,14 +135,35 @@ impl YopmailClientBuilder {
 }
 
 impl YopmailClient {
+    /// Start building a client for `mailbox`.
+    ///
+    /// Equivalent to [`YopmailClientBuilder::new`].
     pub fn builder(mailbox: impl AsRef<str>) -> YopmailClientBuilder {
         YopmailClientBuilder::new(mailbox)
     }
 
+    /// Construct a client for `mailbox` with default settings.
+    ///
+    /// This does not perform any network requests. Most operations will implicitly call
+    /// [`open_inbox`](Self::open_inbox) on first use.
     pub fn new(mailbox: impl AsRef<str>) -> Result<Self> {
         YopmailClientBuilder::new(mailbox).build()
     }
 
+    /// Initialize the session by performing the same flow as the YOPmail web UI.
+    ///
+    /// This method:
+    /// - sets default cookies (including `ytime` and `ywm`)
+    /// - loads the login page to extract a `yp` token (falling back to [`FALLBACK_YP_TOKEN`])
+    /// - posts the login form to establish the session cookies
+    ///
+    /// This is a best-effort initialization. The method does not validate the login response;
+    /// subsequent operations may still fail with [`Error::Status`].
+    ///
+    /// # Errors
+    /// - Returns [`Error::Http`] for transport failures and timeouts.
+    /// - This method does not currently validate HTTP status codes, so a non-2xx response may not
+    ///   be reported as [`Error::Status`].
     pub async fn open_inbox(&mut self) -> Result<()> {
         self.set_default_cookies();
 
@@ -144,6 +195,17 @@ impl YopmailClient {
         Ok(())
     }
 
+    /// List messages in the inbox for `page`.
+    ///
+    /// If the session is not yet initialized, this calls [`open_inbox`](Self::open_inbox)
+    /// automatically.
+    ///
+    /// The returned [`Message`] values are derived from the YOPmail inbox HTML. In particular,
+    /// `Message::date` is currently always `None`.
+    ///
+    /// # Errors
+    /// - Returns [`Error::Http`] for transport failures and timeouts.
+    /// - Returns [`Error::Status`] if the inbox endpoint responds with a non-success HTTP status.
     pub async fn list_messages(&mut self, page: i32) -> Result<Vec<Message>> {
         if self.yp_token.is_none() {
             self.open_inbox().await?;
@@ -186,11 +248,35 @@ impl YopmailClient {
         Ok(messages)
     }
 
+    /// Fetch the text body of a message.
+    ///
+    /// This is a convenience wrapper around [`fetch_message_full`](Self::fetch_message_full) that
+    /// returns only [`MessageContent::text`].
     pub async fn fetch_message(&mut self, message_id: &str) -> Result<String> {
         let content = self.fetch_message_full(message_id).await?;
         Ok(content.text)
     }
 
+    /// Fetch a message and return parsed text/HTML, raw HTML, and attachment links.
+    ///
+    /// `message_id` should typically be the [`Message::id`] returned by [`list_messages`].
+    /// The implementation accepts several ID variants and will retry (on HTTP 400) using multiple
+    /// common encodings used by YOPmail (for example `m_...`, `me_...`, and `e_...` prefixes).
+    ///
+    /// On success:
+    /// - `text` is extracted and whitespace-normalized
+    /// - `html` is extracted from the message container (best-effort)
+    /// - `raw` is the full HTML response body
+    /// - `attachments` is a best-effort list of unique download URLs
+    ///
+    /// # Retry behavior
+    /// This method may retry the mail fetch on HTTP 400 by attempting a few different message ID
+    /// encodings. It does not perform transport-level retries or backoff.
+    ///
+    /// # Errors
+    /// - Returns [`Error::Http`] for transport failures and timeouts.
+    /// - Returns [`Error::Status`] when all ID variants fail (the captured body is from the last
+    ///   attempt).
     pub async fn fetch_message_full(&mut self, message_id: &str) -> Result<MessageContent> {
         if self.yp_token.is_none() {
             self.open_inbox().await?;
@@ -287,6 +373,24 @@ impl YopmailClient {
         })
     }
 
+    /// Send a message from this mailbox.
+    ///
+    /// The recipient must be a YOPmail address ending with `@yopmail.com`, otherwise
+    /// [`Error::InvalidRecipient`] is returned.
+    ///
+    /// Note: the current implementation also checks the recipient domain against [`ALT_DOMAINS`].
+    /// Combined with the `@yopmail.com` suffix requirement, this effectively restricts recipients
+    /// to `...@yopmail.com` only.
+    ///
+    /// Delivery and success are determined by a simple, case-insensitive substring check over the
+    /// response body (for example `sent successfully` or `ok|`). If the HTTP request succeeds but
+    /// no success marker is found, this returns [`Error::Auth`].
+    ///
+    /// # Errors
+    /// - Returns [`Error::InvalidRecipient`] if `to` is not accepted by the current implementation.
+    /// - Returns [`Error::Http`] for transport failures and timeouts.
+    /// - Returns [`Error::Status`] if the write endpoint responds with a non-success HTTP status.
+    /// - Returns [`Error::Auth`] if the response body does not contain a recognized success marker.
     pub async fn send_message(&mut self, to: &str, subject: &str, body: &str) -> Result<()> {
         if !to.ends_with("@yopmail.com") {
             return Err(Error::InvalidRecipient);
@@ -335,21 +439,27 @@ impl YopmailClient {
         }
     }
 
+    /// Fetch the first page of the inbox and return `(count, messages)`.
+    ///
+    /// `count` is the number of messages returned by the parsed page, not a server-reported total.
     pub async fn get_inbox_info(&mut self) -> Result<(usize, Vec<Message>)> {
         let messages = self.list_messages(1).await?;
         let count = messages.len();
         Ok((count, messages))
     }
 
+    /// Convenience wrapper for `list_messages(1)`.
     pub async fn check_inbox(&mut self) -> Result<Vec<Message>> {
         self.list_messages(1).await
     }
 
+    /// Return the first message from `list_messages(1)`, if any.
     pub async fn get_last_message(&mut self) -> Result<Option<Message>> {
         let messages = self.list_messages(1).await?;
         Ok(messages.into_iter().next())
     }
 
+    /// Fetch and return the text of the first message from `list_messages(1)`, if any.
     pub async fn get_last_message_content(&mut self) -> Result<Option<String>> {
         let messages = self.list_messages(1).await?;
         if let Some(msg) = messages.first() {
@@ -360,16 +470,21 @@ impl YopmailClient {
         }
     }
 
+    /// Return the number of messages in `list_messages(1)`.
     pub async fn get_inbox_count(&mut self) -> Result<usize> {
         let messages = self.list_messages(1).await?;
         Ok(messages.len())
     }
 
+    /// Return the number of messages in `list_messages(page)`.
     pub async fn get_inbox_count_page(&mut self, page: i32) -> Result<usize> {
         let messages = self.list_messages(page).await?;
         Ok(messages.len())
     }
 
+    /// Return `(count, latest)` for `list_messages(1)`.
+    ///
+    /// `latest` is the first message in the returned vector, if any.
     pub async fn get_inbox_summary(&mut self) -> Result<(usize, Option<Message>)> {
         let messages = self.list_messages(1).await?;
         let count = messages.len();
@@ -377,6 +492,9 @@ impl YopmailClient {
         Ok((count, latest))
     }
 
+    /// Return `(count, latest)` for `list_messages(page)`.
+    ///
+    /// `latest` is the first message in the returned vector, if any.
     pub async fn get_inbox_summary_page(&mut self, page: i32) -> Result<(usize, Option<Message>)> {
         let messages = self.list_messages(page).await?;
         let count = messages.len();
@@ -384,6 +502,14 @@ impl YopmailClient {
         Ok((count, latest))
     }
 
+    /// Download an attachment and return its raw bytes.
+    ///
+    /// The `attachment` URL is typically obtained from [`MessageContent::attachments`].
+    /// If the URL is relative, it is resolved against the client's `base_url`.
+    ///
+    /// # Errors
+    /// - Returns [`Error::Http`] for transport failures and timeouts.
+    /// - Returns [`Error::Status`] if the download endpoint responds with a non-success HTTP status.
     pub async fn download_attachment(&mut self, attachment: &Attachment) -> Result<Vec<u8>> {
         if self.yp_token.is_none() {
             self.open_inbox().await?;
@@ -404,11 +530,28 @@ impl YopmailClient {
         Ok(bytes.to_vec())
     }
 
+    /// Construct the RSS feed URL for a mailbox.
+    ///
+    /// If `mailbox` is `None`, this uses the mailbox configured on the client.
     pub fn get_rss_feed_url(&self, mailbox: Option<&str>) -> String {
         let target = mailbox.unwrap_or(&self.mailbox);
         format!("{}/rss?login={}", self.base_url, target)
     }
 
+    /// Generate (or resolve) the RSS feed for a mailbox and return `(rss_url, items)`.
+    ///
+    /// This first requests the "gen-rss" endpoint to obtain a feed URL (including a hash parameter),
+    /// then downloads that RSS XML and parses `<item>` entries.
+    ///
+    /// Parsing is best-effort:
+    /// - `RssItem::sender` is inferred by scanning the item's description for an email address
+    /// - missing fields fall back to placeholder strings (for example `"No Subject"`)
+    ///
+    /// # Errors
+    /// - Returns [`Error::Http`] for transport failures and timeouts.
+    /// - This method does not currently validate HTTP status codes for the RSS endpoints; if the
+    ///   server returns a non-2xx response body that can be read as text, the method may still
+    ///   return `Ok((rss_url, items))` with an empty or partial parse.
     pub async fn get_rss_feed_data(
         &mut self,
         mailbox: Option<&str>,
@@ -690,7 +833,12 @@ fn find_email(text: &str) -> Option<String> {
         .map(|m| m.as_str().to_string())
 }
 
-/// Generate a random mailbox name (alphanumeric, lowercased).
+/// Generate a random mailbox name.
+///
+/// The generated value:
+/// - uses ASCII alphanumeric characters only
+/// - is lowercased
+/// - clamps `len` to the inclusive range `6..=32`
 pub fn generate_random_mailbox(len: usize) -> String {
     let length = len.max(6).min(32);
     let mut rng = rand::thread_rng();

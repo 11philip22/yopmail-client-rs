@@ -1,8 +1,16 @@
+//! HTTP and protocol constants used to emulate the YOPmail web UI.
+//!
+//! Most users should not need anything in this module besides the items re-exported at the crate
+//! root (for example [`BASE_URL`], [`DEFAULT_DOMAIN`], [`ALT_DOMAINS`], and [`default_timeout`]).
+//! The remaining values exist to support the internal request/parse logic.
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::time::Duration;
 
+/// Default base URL used by [`YopmailClient`](crate::YopmailClient).
 pub const BASE_URL: &str = "https://yopmail.com";
+/// Default domain used when a mailbox is provided as `local` without `@domain`.
 pub const DEFAULT_DOMAIN: &str = "yopmail.com";
+/// Known YOPmail-related domains used for address validation and compatibility.
 pub const ALT_DOMAINS: &[&str] = &[
     "0cd.cn",
     "1nom.org",
@@ -531,12 +539,18 @@ pub const ALT_DOMAINS: &[&str] = &[
     "yopmail.net",
     "yopmail.pp.ua",
 ];
+/// Version parameter used by the YOPmail inbox/mail endpoints.
 pub const VERSION: &str = "9.2";
+/// Token parameter used by the YOPmail inbox/mail endpoints.
 pub const YJ_TOKEN: &str = "IZwx0AGH1BQxjBQx1ZmNmBQR";
+/// "ad" query parameter used by the YOPmail inbox/mail endpoints.
 pub const AD_PARAM: i32 = 0;
+/// Default timeout in seconds used by [`default_timeout`].
 pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
-// Updated from the Python client snapshot (October 14, 2025)
+/// Default cookie values used by the client.
+///
+/// Updated from the Python client snapshot (October 14, 2025).
 pub const DEFAULT_COOKIES: &[(&str, &str)] = &[
     ("yc", "EAGNlBGD2Awx4ZmpkZGN4ZQV"),
     ("yses", "zz6dtenHstru+L/GLPPQD4a5iJbTzoLzBsyP3HkfhNIwBQRWRdGPgRYto8uoBVoi"),
@@ -549,6 +563,10 @@ pub const DEFAULT_COOKIES: &[(&str, &str)] = &[
     ("ywm", "testuserauto2"),
 ];
 
+/// Build the default HTTP headers used by this client.
+///
+/// This converts [`DEFAULT_HEADERS`] into a `reqwest::header::HeaderMap`, skipping any values that
+/// fail to parse.
 pub fn default_headers() -> HeaderMap {
     let mut headers = HeaderMap::new();
     for (k, v) in DEFAULT_HEADERS {
@@ -560,6 +578,7 @@ pub fn default_headers() -> HeaderMap {
     headers
 }
 
+/// Default header pairs used by [`default_headers`].
 pub const DEFAULT_HEADERS: &[(&str, &str)] = &[
     ("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
     ("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
@@ -569,6 +588,7 @@ pub const DEFAULT_HEADERS: &[(&str, &str)] = &[
     ("upgrade-insecure-requests", "1"),
 ];
 
+/// Extra headers used for inbox listing requests.
 pub const INBOX_HEADERS: &[(&str, &str)] = &[
     ("referer", "https://yopmail.com/wm"),
     ("sec-fetch-dest", "iframe"),
@@ -576,7 +596,7 @@ pub const INBOX_HEADERS: &[(&str, &str)] = &[
     ("sec-fetch-site", "same-origin"),
 ];
 
-// Mail fetch headers (closer to browser)
+/// Extra headers used for mail fetch requests.
 pub const MAIL_HEADERS: &[(&str, &str)] = &[
     ("referer", "https://yopmail.com/en/wm"),
     ("sec-fetch-dest", "iframe"),
@@ -586,6 +606,7 @@ pub const MAIL_HEADERS: &[(&str, &str)] = &[
     ("upgrade-insecure-requests", "1"),
 ];
 
+/// Extra headers used for message sending requests.
 pub const SEND_HEADERS: &[(&str, &str)] = &[
     ("content-type", "application/x-www-form-urlencoded"),
     ("origin", "https://yopmail.com"),
@@ -599,9 +620,12 @@ pub const SEND_HEADERS: &[(&str, &str)] = &[
     ("priority", "u=1, i"),
 ];
 
+/// Prefix commonly used by YOPmail message IDs in the inbox DOM.
 pub const MESSAGE_ID_PREFIX: &str = "me_";
+/// Fallback `yp` token used when the login page does not contain an extractable value.
 pub const FALLBACK_YP_TOKEN: &str = "ZAGplZmp0ZmR3ZQN4ZGx1ZGR";
 
+/// Default request timeout used by the client.
 pub fn default_timeout() -> Duration {
     Duration::from_secs(DEFAULT_TIMEOUT_SECS)
 }
