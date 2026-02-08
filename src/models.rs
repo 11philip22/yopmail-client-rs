@@ -4,6 +4,7 @@
 //! the underlying HTML/RSS sources. Fields may be absent or change based on YOPmail's markup.
 use serde::Serialize;
 
+/// Summary information for a mailbox message.
 #[derive(Debug, Clone, Serialize)]
 /// A message summary parsed from the inbox HTML.
 ///
@@ -25,6 +26,7 @@ pub struct Message {
     pub time: Option<String>,
 }
 
+/// RSS item parsed from a Yopmail feed.
 #[derive(Debug, Clone, Serialize)]
 /// An item parsed from the mailbox RSS feed.
 pub struct RssItem {
@@ -40,6 +42,7 @@ pub struct RssItem {
     pub description: Option<String>,
 }
 
+/// Attachment metadata from a message.
 #[derive(Debug, Clone, Serialize)]
 /// An attachment link extracted from a message view.
 pub struct Attachment {
@@ -49,6 +52,7 @@ pub struct Attachment {
     pub url: String,
 }
 
+/// Full message content including text, HTML, and attachments.
 #[derive(Debug, Clone, Serialize)]
 /// Full content of a fetched message.
 pub struct MessageContent {

@@ -449,6 +449,7 @@ impl YopmailClient {
     }
 
     /// Convenience wrapper for `list_messages(1)`.
+    /// Convenience wrapper for `list_messages(1)`.
     pub async fn check_inbox(&mut self) -> Result<Vec<Message>> {
         self.list_messages(1).await
     }

@@ -1,6 +1,6 @@
 [package]
 name = "yopmail-client"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 description = "Unofficial async client for YOPmail: list inboxes, fetch (HTML/raw), send, attachments, RSS"
 license = "MIT"
