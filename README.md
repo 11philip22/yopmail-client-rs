@@ -1,11 +1,19 @@
-# yopmail-client
+﻿<p align="center">
+  <img src="assets/hero-banner.png" alt="hero pane" width="980">
+</p>
 
-[![Crates.io](https://img.shields.io/crates/v/yopmail-client.svg)](https://crates.io/crates/yopmail-client)
-[![Documentation](https://docs.rs/yopmail-client/badge.svg)](https://docs.rs/yopmail-client)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/woldp001/guerrillamail-client-rs/pulls)
+<p align="center">
+  <a href="https://crates.io/crates/yopmail-client"><img src="https://img.shields.io/badge/crates.io-yopmail--client-F59E0B?style=for-the-badge&logo=rust&logoColor=white" alt="Crates.io"></a>
+  <a href="https://docs.rs/yopmail-client"><img src="https://img.shields.io/badge/docs.rs-yopmail--client-3B82F6?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Documentation"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-8B5CF6?style=for-the-badge" alt="MIT License"></a>
+  <a href="https://github.com/woldp001/guerrillamail-client-rs/pulls"><img src="https://img.shields.io/badge/PRs-Welcome-22C55E?style=for-the-badge" alt="PRs Welcome"></a>
+</p>
 
-![YOPmail](https://yopmail.com/logo.png)
+<p align="center">
+  <a href="#features">Features</a> &middot; <a href="#install">Install</a> &middot; <a href="#quickstart-library">Quickstart</a> &middot; <a href="#cli-examplesclirs">CLI</a> &middot; <a href="#available-domains">Available Domains</a> &middot; <a href="#documentation">Documentation</a> &middot; <a href="#contributing">Contributing</a> &middot; <a href="#support">Support</a> &middot; <a href="#license">License</a>
+</p>
+
+---
 
 Unofficial async Rust client for [YOPmail](https://yopmail.com). It mirrors the web UI flow (cookies + `yp` tokens) to list inboxes, fetch message bodies (text + HTML), download attachments, send mails, and work with RSS feeds. Ships with a small CLI example.
 
@@ -107,4 +115,4 @@ This project is a Rust port of the [Python yopmail-client](https://pypi.org/proj
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/11philip22)
 
 ## License
-This project is licensed under the MIT License; see the [license](license) file for details.
+This project is licensed under the MIT License; see the [license](https://opensource.org/licenses/MIT) for details.
