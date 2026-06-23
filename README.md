@@ -1,118 +1,151 @@
-﻿<p align="center">
-  <img src="assets/hero-banner.png" alt="hero pane" width="980">
+<h1 align="center">yopmail-client</h1>
+
+<p align="center">
+  Unofficial async Rust client for disposable <a href="https://yopmail.com">YOPmail</a> inboxes.
 </p>
 
 <p align="center">
-  <a href="https://crates.io/crates/yopmail-client"><img src="https://img.shields.io/badge/crates.io-yopmail--client-F59E0B?style=for-the-badge&logo=rust&logoColor=white" alt="Crates.io"></a>
-  <a href="https://docs.rs/yopmail-client"><img src="https://img.shields.io/badge/docs.rs-yopmail--client-3B82F6?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Documentation"></a>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-8B5CF6?style=for-the-badge" alt="MIT License"></a>
-  <a href="https://github.com/woldp001/guerrillamail-client-rs/pulls"><img src="https://img.shields.io/badge/PRs-Welcome-22C55E?style=for-the-badge" alt="PRs Welcome"></a>
+  <a href="https://crates.io/crates/yopmail-client"><img src="https://img.shields.io/crates/v/yopmail-client?style=flat-square" alt="Crates.io"></a>
+  <a href="https://docs.rs/yopmail-client"><img src="https://img.shields.io/docsrs/yopmail-client?style=flat-square" alt="Documentation"></a>
+  <img src="https://img.shields.io/badge/Rust-2024-orange?style=flat-square&logo=rust" alt="Rust 2024">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/MIT-blue?style=flat-square" alt="MIT"></a>
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> &middot; <a href="#install">Install</a> &middot; <a href="#quickstart-library">Quickstart</a> &middot; <a href="#cli-examplesclirs">CLI</a> &middot; <a href="#available-domains">Available Domains</a> &middot; <a href="#documentation">Documentation</a> &middot; <a href="#contributing">Contributing</a> &middot; <a href="#support">Support</a> &middot; <a href="#license">License</a>
+  <a href="#features">Features</a> &middot;
+  <a href="#install">Install</a> &middot;
+  <a href="#quickstart">Quickstart</a> &middot;
+  <a href="#cli-example">CLI Example</a> &middot;
+  <a href="#api-overview">API Overview</a> &middot;
+  <a href="#notes">Notes</a> &middot;
+  <a href="#resources">Resources</a>
 </p>
 
 ---
 
-Unofficial async Rust client for [YOPmail](https://yopmail.com). It mirrors the web UI flow (cookies + `yp` tokens) to list inboxes, fetch message bodies (text + HTML), download attachments, send mails, and work with RSS feeds. Ships with a small CLI example.
+`yopmail-client` is a small async Rust crate for working with temporary YOPmail inboxes from tests, demos, and automation. It can list inbox pages, fetch message content, download attachments, send YOPmail-to-YOPmail messages, and read RSS feeds.
+
+> [!NOTE]
+> This crate is unofficial. It talks to YOPmail's public web endpoints, so changes to YOPmail's HTML or request flow can require parser updates.
 
 ## Features
-- Inbox: list with paging (`YopmailClient::check_inbox_page`, `list_messages`).
-- Fetch: text/HTML/raw plus attachment discovery (`get_message_by_id_full`, `fetch_message_full`).
-- Attachments: download via `download_attachment`.
-- Send: post to another `@yopmail.com` address.
-- RSS: get feed URL and parse items.
-- Helpers: inbox counts/summaries, random mailbox generator.
+
+- List inbox messages with paging.
+- Fetch plain text, extracted HTML, raw HTML, and attachment links.
+- Download message attachments as bytes.
+- Send messages from a YOPmail mailbox to `@yopmail.com` recipients.
+- Build RSS feed URLs and parse RSS feed items.
+- Generate random mailbox names for disposable test flows.
+- Configure timeout, proxy, and base URL through `YopmailClientBuilder`.
+- Work with simple `serde`-serializable models.
 
 ## Install
+
 ```bash
 cargo add yopmail-client
 ```
 
-## Quickstart (library)
+The client is async. The examples below use Tokio:
+
+```bash
+cargo add tokio --features macros,rt-multi-thread
+```
+
+## Quickstart
+
 ```rust
 use yopmail_client::{generate_random_mailbox, YopmailClient};
 
 #[tokio::main]
 async fn main() -> Result<(), yopmail_client::Error> {
-    let mailbox = "mytempbox";
-    let mut client = YopmailClient::new(mailbox)?;
+    let mailbox = generate_random_mailbox(12);
+    let mut client = YopmailClient::new(&mailbox)?;
 
-    // List first page
-    let messages = client.check_inbox_page(1).await?;
+    let messages = client.list_messages(1).await?;
+    println!("{} message(s) in {mailbox}@yopmail.com", messages.len());
 
-    // Fetch plain text
-    let body = client.get_message_by_id(&messages[0].id).await?;
+    if let Some(message) = messages.first() {
+        let content = client.fetch_message_full(&message.id).await?;
 
-    // Fetch full content (html/raw/attachments)
-    let content = client.get_message_by_id_full(&messages[0].id).await?;
-    for att in &content.attachments {
-        println!(
-            "attachment: {} -> {}",
-            att.name.clone().unwrap_or_default(),
-            att.url
-        );
+        println!("Subject: {}", message.subject);
+        println!("{}", content.text);
+
+        for attachment in &content.attachments {
+            let bytes = client.download_attachment(attachment).await?;
+            println!("downloaded {} bytes from {}", bytes.len(), attachment.url);
+        }
     }
-
-    // Download an attachment
-    let bytes = client.download_attachment(&content.attachments[0]).await?;
-
-    // Generate a random mailbox name
-    let random_box = generate_random_mailbox(12);
-    println!("{random_box}@yopmail.com");
 
     Ok(())
 }
 ```
 
-Customize the client with the builder when you need a proxy, timeout, or base URL override:
+Most methods open the session lazily. Call `open_inbox()` yourself when you want that state transition to be explicit:
+
+```rust
+let mut client = YopmailClient::new("my-temp-inbox")?;
+client.open_inbox().await?;
+let messages = client.check_inbox().await?;
+```
+
+Customize the underlying HTTP client with the builder:
+
 ```rust
 use std::time::Duration;
 use yopmail_client::YopmailClient;
 
-let mut client = YopmailClient::builder("mytempbox")
-    .proxy_url("http://127.0.0.1:8080")
+let mut client = YopmailClient::builder("my-temp-inbox@yopmail.com")
     .timeout(Duration::from_secs(20))
+    .proxy_url("http://127.0.0.1:8080")
     .build()?;
 ```
 
-## CLI (examples/cli.rs)
+## CLI Example
+
+This repository ships an example CLI in [`examples/cli.rs`](examples/cli.rs):
+
 ```bash
-cargo run --example cli -- --mailbox mytempbox list --details
-cargo run --example cli -- --mailbox mytempbox fetch --id <message-id>
-cargo run --example cli -- --mailbox mytempbox fetch --id <message-id> --html
-cargo run --example cli -- --mailbox mytempbox fetch --id <message-id> --attachments
-cargo run --example cli -- --mailbox mytempbox fetch --id <message-id> --download-attachments downloads/
-cargo run --example cli -- random --len 10
+cargo run --example cli -- --mailbox my-temp-inbox list --details
+cargo run --example cli -- --mailbox my-temp-inbox fetch --id <message-id>
+cargo run --example cli -- --mailbox my-temp-inbox fetch --id <message-id> --html
+cargo run --example cli -- --mailbox my-temp-inbox fetch --id <message-id> --attachments
+cargo run --example cli -- --mailbox my-temp-inbox fetch --id <message-id> --download-attachments downloads/
+cargo run --example cli -- --mailbox my-temp-inbox send --to friend@yopmail.com --subject "Hello" --body "Hi"
+cargo run --example cli -- --mailbox my-temp-inbox rss-data
+cargo run --example cli -- random --len 12
 ```
 
-Commands: `list`, `fetch`, `send`, `rss-url`, `rss-data`, `info`, `random`. Use `--proxy` to tunnel through a proxy.
+Use `--proxy <url>` before the subcommand to route requests through a proxy.
 
-## Available domains
-```
-0cd.cn, 1nom.org, 1xp.fr, 15963.fr.nf, a.kwtest.io, abo-free.fr.nf, ac-malin.fr.nf, actarus.infos.st, adresse.biz.st, adresse.infos.st, afw.fr.nf, altrans.fr.nf, alves.fr.nf, alphax.fr.nf, alyxgod.rf.gd, antispam.fr.nf, antispam.rf.gd, assurmail.net, autre.fr.nf, bahoo.biz.st, bboys.fr.nf, bibi.biz.st, bin-ich.com, binich.com, blip.ovh, c-eric.fr.nf, cabiste.fr.nf, calendro.fr.nf, calima.asso.st, carioca.biz.st, carnesa.biz.st, cc.these.cc, certexx.fr.nf, cloudsign.in, cobal.infos.st, contact.biz.st, contact.infos.st, cookie007.fr.nf, cool.fr.nf, courriel.fr.nf, cpc.cx, cubox.biz.st, dann.mywire.org, dede.infos.st, degap.fr.nf, desfrenes.fr.nf, dis.hopto.org, dlvr.us.to, dmts.fr.nf, donemail.my.id, dreamgreen.fr.nf, dripzgaming.com, druzik.pp.ua, ealea.fr.nf, elmail.4pu.com, emaildark.fr.nf, emocan.name.tr, enpa.rf.gd, eooo.mooo.com, faybetsy.com, fhpfhp.fr.nf, fiallaspares.com, flobo.fr.nf, flaimenet.ir, freemail.biz.st, frostmail.fr.nf, galaxim.fr.nf, get.route64.de, get.vpn64.de, gimuemoa.fr.nf, gland.xxl.st, ggamess.42web.io, ggmail.biz.st, gmail.gob.re, gladogmi.fr.nf, haben-wir.com, habenwir.com, himail.infos.st, hunnur.com, iamfrank.rf.gd, iuse.ydns.eu, imap.fr.nf, internaut.us.to, isep.fr.nf, ist-hier.com, iya.fr.nf, jmail.fr.nf, jetable.fr.nf, jetable.org, jinva.fr.nf, kyuusei.fr.nf, lacraffe.fr.nf, le.monchu.fr, lerch.ovh, likeageek.fr.nf, m.tartinemoi.com, ma.ezua.com, ma.zyns.com, ma1l.duckdns.org, mabal.fr.nf, machen-wir.com, mail.berwie.com, mail.hsmw.net, mail.i-dork.com, mail.kakator.com, mail.tbr.fr.nf, mail.xstyled.net, mail.yabes.ovh, mailadresi.tk, mailbox.biz.st, mailsafe.fr.nf, mai.25u.com, mcdomaine.fr.nf, mc-fly.be, mickaben.biz.st, mickaben.fr.nf, mickaben.xxl.st, miloras.fr.nf, miistermail.fr, mondial.asso.st, moncourrier.fr.nf, monemail.fr.nf, monmail.fr.nf, mynes.com, mymail.infos.st, mymailbox.xxl.st, mymaildo.kro.kr, myself.fr.nf, nikora.biz.st, nikora.fr.nf, nidokela.biz.st, noreply.fr, nospam.fr.nf, noyp.fr.nf, omicron.token.ro, pamil.fr.nf, pepamail.com, pixelgagnant.net, pitimail.xxl.st, pliz.fr.nf, pochtac.ru, pokemons1.fr.nf, pooo.ooguy.com, popol.fr.nf, poubelle-du.net, poubelle.fr.nf, q0.us.to, rapidefr.fr.nf, randol.infos.st, readmail.biz.st, redi.fr.nf, rygel.infos.st, sdj.fr.nf, sendos.fr.nf, sendos.infos.st, sirttest.us.to, six25.biz, sind-hier.com, sind-wir.com, sindhier.com, sindwir.com, skynet.infos.st, spam.aleh.de, spam.quillet.eu, super.lgbt, tagara.infos.st, terre.infos.st, test-infos.fr.nf, test.inclick.net, tivo.camdvr.org, tmp.x-lab.net, toolbox.ovh, torrent411.fr.nf, totococo.fr.nf, tshirtsavvy.com, tweet.fr.nf, upc.infos.st, ves.ink, vip.ep77.com, vitahicks.com, vigilantkeep.net, webclub.infos.st, webstore.fr.nf, whatagarbage.com, wishy.fr, wir-sind.com, woofidog.fr.nf, wxcv.fr.nf, yaloo.fr.nf, yahooz.xxl.st, y.dldweb.info, ym.cypi.fr, ym.digi-value.fr, yop.iotf.net, yop.kd2.org, yop.kyriog.fr, yop.mabox.eu, yop.mc-fly.be, yop.moolee.net, yop.smeux.com, yop.too.li, yop.uuii.in, yopmail.ca, yopmail.co.ke, yopmail.co.nz, yopmail.co.pl, yopmail.co.uk, yopmail.com, yopmail.com.au, yopmail.de, yopmail.es, yopmail.fr, yopmail.gr, yopmail.hk, yopmail.id, yopmail.in, yopmail.ir, yopmail.it, yopmail.jp, yopmail.kr, yopmail.lt, yopmail.net, yopmail.net.cn, yopmail.net.fr, yopmail.org, yopmail.pl, yopmail.pp.ua, yopmail.pt, yopmail.se, yopmail.sg, yopmail.tw, yopmail.uz, yopmail.za, yopmail.kro.kr, yopmail.ozm.fr, yopmail.pp, yopmail.to, yopmail.too.li, yopmail.uuii.in, yopmail.xl.cx, yopmail.ydns.eu, yopmail.mabox.eu, yopmail.moolee.net, yopmail.smeux.com, yopmail.net3 … yopmail.net200 (all numeric suffix variants), yopmail.pp.ua, ypmpail.sehier.fr, ypmpail.sehier.fr, ypmpail.sehier.fr, ypmpail.sehier.fr, ypmpail.sehier.fr, yopmail.pp.ua, yopmail.net.in, yopmail.mx, yopmail.my, yopmail.me, yopmail.ch, yopmail.be, yopmail.at, yopmail.hu, yopmail.cz, yopmail.sk, yopmail.si, yopmail.hr, yopmail.ba, yopmail.rs, yopmail.bg, yopmail.ro, yopmail.ua, yopmail.by, yopmail.lv, yopmail.ee, yopmail.ge, yopmail.am, yopmail.kz, yopmail.tj, yopmail.az, yopmail.iq, yopmail.il, yopmail.sa, yopmail.qa, yopmail.ae, yopmail.pk, yopmail.lk, yopmail.bd, yopmail.th, yopmail.ph, yopmail.vn, yopmail.la, yopmail.kh, yopmail.mm, yopmail.cn, yopmail.co.jp, yopmail.ng, yopmail.ke, yopmail.tz, yopmail.rw, yopmail.ug, yopmail.mg, yopmail.ma, yopmail.dz, yopmail.tn, yopmail.ly, yopmail.eg
-```
+## API Overview
 
-## Documentation
+| Task | Method |
+| --- | --- |
+| Create a client | `YopmailClient::new`, `YopmailClient::builder` |
+| Initialize session | `open_inbox` |
+| List inbox | `list_messages`, `check_inbox`, `get_inbox_info` |
+| Fetch content | `fetch_message`, `fetch_message_full` |
+| Download files | `download_attachment` |
+| Send mail | `send_message` |
+| RSS | `get_rss_feed_url`, `get_rss_feed_data` |
+| Helpers | `get_last_message`, `get_inbox_summary`, `generate_random_mailbox` |
 
-For detailed API documentation, visit [docs.rs/yopmail-client](https://docs.rs/yopmail-client).
+Mailboxes can be passed as `local` or `local@domain`. The default domain is `yopmail.com`, and the crate exports `ALT_DOMAINS` for callers that need the known alias list.
 
-## Contributing
+## Notes
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+> [!TIP]
+> Prefer `generate_random_mailbox()` for tests and demos so multiple runs do not collide in a shared public inbox.
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/cool-feature`)
-3. Commit your changes (`git commit -m 'Add some cool feature'`)
-4. Push to the branch (`git push origin feature/cool-feature`)
-5. Open a Pull Request
+- `YopmailClient` is stateful and methods take `&mut self` because cookies and the `yp` token are refreshed on demand.
+- `Message::date` is currently always `None`; `Message::time` is parsed when available.
+- `send_message` currently accepts only recipients ending in `@yopmail.com`.
+- `fetch_message_full` retries a few YOPmail message ID variants after HTTP 400 responses, but the crate does not implement network retry or polling loops.
+- Non-success responses from core inbox, mail, send, and attachment requests are returned as `Error::Status` with the response body captured for debugging.
 
-## Acknowledgements
-This project is a Rust port of the [Python yopmail-client](https://pypi.org/project/yopmail-client/1.2.3/). This port does not require a license key 😉
+## Resources
 
-## Support
-[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/11philip22)
-
-## License
-This project is licensed under the MIT License; see the [license](https://opensource.org/licenses/MIT) for details.
+- [API documentation on docs.rs](https://docs.rs/yopmail-client)
+- [Package on crates.io](https://crates.io/crates/yopmail-client)
+- [YOPmail](https://yopmail.com)
+- [Python yopmail-client](https://pypi.org/project/yopmail-client/1.2.3/), which inspired this Rust port
