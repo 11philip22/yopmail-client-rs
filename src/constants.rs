@@ -1,8 +1,6 @@
 //! HTTP and protocol constants used to emulate the YOPmail web UI.
 //!
-//! Most users should not need anything in this module besides the items re-exported at the crate
-//! root (for example [`BASE_URL`], [`DEFAULT_DOMAIN`], and [`default_timeout`]).
-//! The remaining values exist to support the internal request/parse logic.
+//! Most constants here exist only to support the internal request/parse logic.
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::time::Duration;
 
@@ -11,9 +9,9 @@ pub const BASE_URL: &str = "https://yopmail.com";
 /// Default domain used when building full YOPmail addresses.
 pub const DEFAULT_DOMAIN: &str = "yopmail.com";
 /// Version parameter used by the YOPmail inbox/mail endpoints.
-pub const VERSION: &str = "9.3";
+pub(crate) const VERSION: &str = "9.3";
 /// "ad" query parameter used by the YOPmail inbox/mail endpoints.
-pub const AD_PARAM: i32 = 0;
+pub(crate) const AD_PARAM: i32 = 0;
 /// Default timeout in seconds used by [`default_timeout`].
 pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
@@ -21,7 +19,7 @@ pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
 ///
 /// This converts [`DEFAULT_HEADERS`] into a `reqwest::header::HeaderMap`, skipping any values that
 /// fail to parse.
-pub fn default_headers() -> HeaderMap {
+pub(crate) fn default_headers() -> HeaderMap {
     let mut headers = HeaderMap::new();
     for (k, v) in DEFAULT_HEADERS {
         let name = HeaderName::from_static(k);
@@ -33,9 +31,15 @@ pub fn default_headers() -> HeaderMap {
 }
 
 /// Default header pairs used by [`default_headers`].
-pub const DEFAULT_HEADERS: &[(&str, &str)] = &[
-    ("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
-    ("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+pub(crate) const DEFAULT_HEADERS: &[(&str, &str)] = &[
+    (
+        "user-agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    ),
+    (
+        "accept",
+        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    ),
     ("accept-language", "en-US,en;q=0.5"),
     ("accept-encoding", "gzip, deflate"),
     ("connection", "keep-alive"),
@@ -43,7 +47,7 @@ pub const DEFAULT_HEADERS: &[(&str, &str)] = &[
 ];
 
 /// Extra headers used for inbox listing requests.
-pub const INBOX_HEADERS: &[(&str, &str)] = &[
+pub(crate) const INBOX_HEADERS: &[(&str, &str)] = &[
     ("referer", "https://yopmail.com/en/wm"),
     ("sec-fetch-dest", "iframe"),
     ("sec-fetch-mode", "navigate"),
@@ -51,7 +55,7 @@ pub const INBOX_HEADERS: &[(&str, &str)] = &[
 ];
 
 /// Extra headers used for mail fetch requests.
-pub const MAIL_HEADERS: &[(&str, &str)] = &[
+pub(crate) const MAIL_HEADERS: &[(&str, &str)] = &[
     ("referer", "https://yopmail.com/en/wm"),
     ("sec-fetch-dest", "iframe"),
     ("sec-fetch-mode", "navigate"),
@@ -61,7 +65,7 @@ pub const MAIL_HEADERS: &[(&str, &str)] = &[
 ];
 
 /// Extra headers used for message sending requests.
-pub const SEND_HEADERS: &[(&str, &str)] = &[
+pub(crate) const SEND_HEADERS: &[(&str, &str)] = &[
     ("content-type", "application/x-www-form-urlencoded"),
     ("origin", "https://yopmail.com"),
     ("referer", "https://yopmail.com/wm"),
@@ -75,7 +79,7 @@ pub const SEND_HEADERS: &[(&str, &str)] = &[
 ];
 
 /// Fallback `yp` token used when the login page does not contain an extractable value.
-pub const FALLBACK_YP_TOKEN: &str = "ZAGplZmp0ZmR3ZQN4ZGx1ZGR";
+pub(crate) const FALLBACK_YP_TOKEN: &str = "ZAGplZmp0ZmR3ZQN4ZGx1ZGR";
 
 /// Default request timeout used by the client.
 pub fn default_timeout() -> Duration {

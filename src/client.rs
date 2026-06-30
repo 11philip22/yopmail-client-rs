@@ -6,14 +6,14 @@
 use crate::constants::*;
 use crate::error::{Error, Result};
 use crate::models::{Attachment, Message, MessageContent};
+use rand::{Rng, distributions::Alphanumeric};
 use regex::Regex;
 use reqwest::{
+    Client, ClientBuilder, StatusCode,
     cookie::Jar,
     header::{HeaderMap, HeaderName, HeaderValue},
-    Client, ClientBuilder, StatusCode,
 };
-use rand::{distributions::Alphanumeric, Rng};
-use scraper::{Html, Selector};
+use scraper::{ElementRef, Html, Selector};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -149,7 +149,7 @@ impl YopmailClient {
     ///
     /// This method:
     /// - sets default cookies (including `ytime` and `ywm`)
-    /// - loads the login page to extract a `yp` token (falling back to [`FALLBACK_YP_TOKEN`])
+    /// - loads the login page to extract a `yp` token (falling back to an internal default)
     /// - posts the login form to establish the session cookies
     ///
     /// This is a best-effort initialization. The method does not validate the login response;
@@ -261,7 +261,7 @@ impl YopmailClient {
 
     /// Fetch a message and return parsed text/HTML, raw HTML, and attachment links.
     ///
-    /// `message_id` should typically be the [`Message::id`] returned by [`list_messages`].
+    /// `message_id` should typically be the [`Message::id`] returned by [`Self::list_messages`].
     /// The implementation accepts several ID variants and will retry (on HTTP 400) using multiple
     /// common encodings used by YOPmail (for example `m_...`, `me_...`, and `e_...` prefixes).
     ///
@@ -297,29 +297,19 @@ impl YopmailClient {
         } else {
             format!("m_{}", raw_id.trim_start_matches("m_"))
         };
-        let alt_id = if raw_id.starts_with("e_")
-            || raw_id.starts_with("me_")
-            || raw_id.starts_with("m_")
-        {
-            raw_id.to_string()
-        } else {
-            format!("e_{raw_id}")
-        };
+        let alt_id =
+            if raw_id.starts_with("e_") || raw_id.starts_with("me_") || raw_id.starts_with("m_") {
+                raw_id.to_string()
+            } else {
+                format!("e_{raw_id}")
+            };
 
-        let variants = vec![main_id, alt_id, raw_id.to_string()];
+        let variants = [main_id, alt_id, raw_id.to_string()];
 
         let mut last_status = None;
         let mut last_body = None;
         for id in variants {
-            let params_owned = vec![
-                ("b".to_string(), self.mailbox.clone()),
-                ("id".to_string(), id),
-            ];
-
-            let params: Vec<(&str, &str)> = params_owned
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.as_str()))
-                .collect();
+            let params = [("b", self.mailbox.as_str()), ("id", id.as_str())];
 
             let resp = self
                 .client
@@ -505,13 +495,12 @@ impl YopmailClient {
     }
 
     fn set_default_cookies(&self) {
-        let base: reqwest::Url = self
-            .base_url
-            .parse()
-            .expect("base URL should be valid");
+        let base: reqwest::Url = self.base_url.parse().expect("base URL should be valid");
         let time_now = current_time_cookie();
-        self.jar
-            .add_cookie_str(&format!("ytime={}; Domain=.yopmail.com; Path=/", time_now), &base);
+        self.jar.add_cookie_str(
+            &format!("ytime={}; Domain=.yopmail.com; Path=/", time_now),
+            &base,
+        );
         self.jar.add_cookie_str(
             &format!("ywm={}; Domain=.yopmail.com; Path=/", self.mailbox),
             &base,
@@ -617,54 +606,48 @@ fn parse_messages(body: &str) -> Vec<Message> {
     messages
 }
 
-fn extract_message_body(body: &str) -> String {
+const MESSAGE_CONTAINER_SELECTORS: &[&str] = &[
+    "#mailctn #mail",
+    "#mailctn",
+    "#mail",
+    "div.mail-body",
+    "div.mail",
+    "div.message",
+    "div.content",
+    "div.body",
+];
+
+fn extract_from_message_container(
+    body: &str,
+    mut extract: impl for<'a> FnMut(ElementRef<'a>) -> Option<String>,
+) -> Option<String> {
     let doc = Html::parse_document(body);
-    let selectors = [
-        "#mailctn #mail",
-        "#mailctn",
-        "#mail",
-        "div.mail-body",
-        "div.mail",
-        "div.message",
-        "div.content",
-        "div.body",
-    ];
-    for sel in selectors {
+    for sel in MESSAGE_CONTAINER_SELECTORS {
         if let Ok(selector) = Selector::parse(sel) {
             if let Some(node) = doc.select(&selector).next() {
-                let text = node.text().collect::<String>();
-                if text.trim().len() > 5 {
-                    return clean_text(&text);
+                if let Some(value) = extract(node) {
+                    return Some(value);
                 }
             }
         }
     }
-    clean_text(body)
+    None
+}
+
+fn extract_message_body(body: &str) -> String {
+    extract_from_message_container(body, |node| {
+        let text = node.text().collect::<String>();
+        (text.trim().len() > 5).then(|| clean_text(&text))
+    })
+    .unwrap_or_else(|| clean_text(body))
 }
 
 fn extract_message_html(body: &str) -> String {
-    let doc = Html::parse_document(body);
-    let selectors = [
-        "#mailctn #mail",
-        "#mailctn",
-        "#mail",
-        "div.mail-body",
-        "div.mail",
-        "div.message",
-        "div.content",
-        "div.body",
-    ];
-    for sel in selectors {
-        if let Ok(selector) = Selector::parse(sel) {
-            if let Some(node) = doc.select(&selector).next() {
-                let html = node.inner_html();
-                if html.trim().len() > 5 {
-                    return html;
-                }
-            }
-        }
-    }
-    body.to_string()
+    extract_from_message_container(body, |node| {
+        let html = node.inner_html();
+        (html.trim().len() > 5).then_some(html)
+    })
+    .unwrap_or_else(|| body.to_string())
 }
 
 fn extract_attachments(body: &str, base: &str) -> Vec<Attachment> {
@@ -682,11 +665,7 @@ fn extract_attachments(body: &str, base: &str) -> Vec<Attachment> {
                         .map(|s| s.to_string())
                         .or_else(|| {
                             let txt = node.text().collect::<String>().trim().to_string();
-                            if txt.is_empty() {
-                                None
-                            } else {
-                                Some(txt)
-                            }
+                            if txt.is_empty() { None } else { Some(txt) }
                         });
                     attachments.push(Attachment { name, url });
                 }
