@@ -688,13 +688,11 @@ fn extract_attachments(body: &str, base: &str) -> Vec<Attachment> {
 }
 
 fn normalize_url(href: &str, base: &str) -> String {
-    if href.starts_with("http://") || href.starts_with("https://") {
-        href.to_string()
-    } else if href.starts_with('/') {
-        format!("{}{}", base.trim_end_matches('/'), href)
-    } else {
-        format!("{}/{}", base.trim_end_matches('/'), href)
-    }
+    let base = format!("{}/", base.trim_end_matches('/'));
+    reqwest::Url::parse(&base)
+        .and_then(|base| base.join(href))
+        .map(|url| url.to_string())
+        .unwrap_or_else(|_| href.to_string())
 }
 
 fn clean_text(input: &str) -> String {
