@@ -540,9 +540,7 @@ pub const ALT_DOMAINS: &[&str] = &[
     "yopmail.pp.ua",
 ];
 /// Version parameter used by the YOPmail inbox/mail endpoints.
-pub const VERSION: &str = "9.2";
-/// Token parameter used by the YOPmail inbox/mail endpoints.
-pub const YJ_TOKEN: &str = "IZwx0AGH1BQxjBQx1ZmNmBQR";
+pub const VERSION: &str = "9.3";
 /// "ad" query parameter used by the YOPmail inbox/mail endpoints.
 pub const AD_PARAM: i32 = 0;
 /// Default timeout in seconds used by [`default_timeout`].
@@ -590,7 +588,7 @@ pub const DEFAULT_HEADERS: &[(&str, &str)] = &[
 
 /// Extra headers used for inbox listing requests.
 pub const INBOX_HEADERS: &[(&str, &str)] = &[
-    ("referer", "https://yopmail.com/wm"),
+    ("referer", "https://yopmail.com/en/wm"),
     ("sec-fetch-dest", "iframe"),
     ("sec-fetch-mode", "navigate"),
     ("sec-fetch-site", "same-origin"),

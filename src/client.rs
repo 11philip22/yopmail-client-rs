@@ -53,6 +53,8 @@ pub struct YopmailClient {
     jar: Arc<Jar>,
     client: Client,
     yp_token: Option<String>,
+    yj_token: Option<String>,
+    version: Option<String>,
 }
 
 /// Builder for [`YopmailClient`].
@@ -130,6 +132,8 @@ impl YopmailClientBuilder {
             jar,
             client,
             yp_token: None,
+            yj_token: None,
+            version: None,
         })
     }
 }
@@ -184,13 +188,16 @@ impl YopmailClient {
                 ("id", String::new()),
                 ("yp", yp.clone()),
             ];
-            let _ = self
+            let resp = self
                 .client
                 .post(format!("{}/en/", self.base_url))
                 .headers(default_headers())
                 .form(&form)
                 .send()
                 .await?;
+            let body = resp.text().await?;
+            self.version = extract_webmail_version(&body);
+            self.yj_token = Some(self.fetch_yj_token(&body).await?);
         }
         Ok(())
     }
@@ -207,7 +214,7 @@ impl YopmailClient {
     /// - Returns [`Error::Http`] for transport failures and timeouts.
     /// - Returns [`Error::Status`] if the inbox endpoint responds with a non-success HTTP status.
     pub async fn list_messages(&mut self, page: i32) -> Result<Vec<Message>> {
-        if self.yp_token.is_none() {
+        if self.yp_token.is_none() || self.yj_token.is_none() {
             self.open_inbox().await?;
         }
 
@@ -215,6 +222,11 @@ impl YopmailClient {
             .yp_token
             .clone()
             .unwrap_or_else(|| FALLBACK_YP_TOKEN.to_string());
+        let yj = self
+            .yj_token
+            .clone()
+            .ok_or_else(|| Error::Parse("missing yj token".into()))?;
+        let version = self.version.clone().unwrap_or_else(|| VERSION.to_string());
 
         let params = [
             ("login", self.mailbox.as_str()),
@@ -222,15 +234,15 @@ impl YopmailClient {
             ("d", ""),
             ("ctrl", ""),
             ("yp", yp.as_str()),
-            ("yj", YJ_TOKEN),
-            ("v", VERSION),
+            ("yj", yj.as_str()),
+            ("v", version.as_str()),
             ("r_c", ""),
             ("id", ""),
             ("ad", &AD_PARAM.to_string()),
         ];
 
         let headers = build_headers(DEFAULT_HEADERS, INBOX_HEADERS);
-        let url = format!("{}/inbox", self.base_url);
+        let url = format!("{}/en/inbox", self.base_url);
         let resp = self
             .client
             .get(&url)
@@ -287,12 +299,6 @@ impl YopmailClient {
 
         let headers = build_headers(DEFAULT_HEADERS, MAIL_HEADERS);
         let mail_url = format!("{}/en/mail", self.base_url);
-        let yp = self
-            .yp_token
-            .clone()
-            .unwrap_or_else(|| FALLBACK_YP_TOKEN.to_string());
-        let ad_param = AD_PARAM.to_string();
-
         let raw_id = message_id.trim();
         let main_id = if raw_id.starts_with('m') {
             raw_id.to_string()
@@ -310,30 +316,15 @@ impl YopmailClient {
             format!("e_{raw_id}")
         };
 
-        let variants = vec![
-            (main_id, true),
-            (alt_id, true),
-            (raw_id.to_string(), false),
-        ];
+        let variants = vec![main_id, alt_id, raw_id.to_string()];
 
         let mut last_status = None;
         let mut last_body = None;
-        for (id, use_full_params) in variants {
-            let mut params_owned = vec![
+        for id in variants {
+            let params_owned = vec![
                 ("b".to_string(), self.mailbox.clone()),
                 ("id".to_string(), id),
             ];
-            if use_full_params {
-                params_owned.extend_from_slice(&[
-                    ("yp".to_string(), yp.clone()),
-                    ("yj".to_string(), YJ_TOKEN.to_string()),
-                    ("v".to_string(), VERSION.to_string()),
-                    ("d".to_string(), "".to_string()),
-                    ("ctrl".to_string(), "".to_string()),
-                    ("r_c".to_string(), "".to_string()),
-                    ("ad".to_string(), ad_param.clone()),
-                ]);
-            }
 
             let params: Vec<(&str, &str)> = params_owned
                 .iter()
@@ -544,6 +535,18 @@ impl YopmailClient {
             &base,
         );
     }
+
+    async fn fetch_yj_token(&self, webmail_body: &str) -> Result<String> {
+        let script_url = extract_webmail_script_url(webmail_body, &self.base_url)
+            .unwrap_or_else(|| format!("{}/ver/{}/webmail.js", self.base_url, VERSION));
+        let resp = self.client.get(script_url).send().await?;
+        let status = resp.status();
+        let body = resp.text().await?;
+        if !status.is_success() {
+            return Err(Error::Status { status, body });
+        }
+        extract_yj_token(&body).ok_or_else(|| Error::Parse("missing yj token".into()))
+    }
 }
 
 fn current_time_cookie() -> String {
@@ -561,6 +564,26 @@ fn extract_yp_token(body: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn extract_webmail_script_url(body: &str, base: &str) -> Option<String> {
+    let re = Regex::new(r#"<script[^>]+src=["']([^"']*webmail\.js)["']"#).ok()?;
+    let path = re.captures(body)?.get(1)?.as_str();
+    Some(normalize_url(path, base))
+}
+
+fn extract_webmail_version(body: &str) -> Option<String> {
+    let re = Regex::new(r#"var\s+ver=['"]([^'"]+)['"]"#).ok()?;
+    re.captures(body)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str().to_string())
+}
+
+fn extract_yj_token(script: &str) -> Option<String> {
+    let re = Regex::new(r#"[?&]yj=([A-Za-z0-9]+)&v="#).ok()?;
+    re.captures(script)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str().to_string())
 }
 
 fn parse_messages(body: &str) -> Vec<Message> {
