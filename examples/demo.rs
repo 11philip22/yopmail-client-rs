@@ -9,10 +9,10 @@
 
 use std::io::Write;
 use std::time::{Duration, Instant};
-use yopmail_client::{DEFAULT_DOMAIN, Error, YopmailClient, generate_random_mailbox};
+use yopmail_client::{DEFAULT_DOMAIN, YopmailClient, generate_random_mailbox};
 
 #[tokio::main]
-async fn main() -> Result<(), Error> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("YOPmail Rust Client - Full Demo");
     println!("{}", "=".repeat(50));
 

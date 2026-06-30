@@ -120,7 +120,7 @@ cargo run --example demo
 | Send mail | `send_message` |
 | Helpers | `get_last_message`, `get_inbox_summary`, `generate_random_mailbox` |
 
-Mailboxes can be passed as `local` or `local@domain`. The default domain is `yopmail.com`, and the crate exports `ALT_DOMAINS` for callers that need the known alias list.
+Mailboxes can be passed as `local` or `local@domain`. The default domain is `yopmail.com`.
 
 ## Notes
 

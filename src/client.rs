@@ -16,8 +16,7 @@ use rand::{distributions::Alphanumeric, Rng};
 use scraper::{Html, Selector};
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::SystemTime;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn parse_mailbox(mailbox: &str) -> (String, String) {
     if let Some((local, domain)) = mailbox.split_once('@') {
@@ -369,10 +368,6 @@ impl YopmailClient {
     /// The recipient must be a YOPmail address ending with `@yopmail.com`, otherwise
     /// [`Error::InvalidRecipient`] is returned.
     ///
-    /// Note: the current implementation also checks the recipient domain against [`ALT_DOMAINS`].
-    /// Combined with the `@yopmail.com` suffix requirement, this effectively restricts recipients
-    /// to `...@yopmail.com` only.
-    ///
     /// Delivery and success are determined by a simple, case-insensitive substring check over the
     /// response body (for example `sent successfully` or `ok|`). If the HTTP request succeeds but
     /// no success marker is found, this returns [`Error::Auth`].
@@ -390,10 +385,6 @@ impl YopmailClient {
             self.open_inbox().await?;
         }
 
-        let recipient_ok = ALT_DOMAINS.iter().any(|d| to.ends_with(d));
-        if !recipient_ok {
-            return Err(Error::InvalidRecipient);
-        }
         let form = [
             ("msgfrom", format!("{}@{}", self.mailbox, self.domain)),
             ("msgto", to.to_string()),
@@ -550,9 +541,12 @@ impl YopmailClient {
 }
 
 fn current_time_cookie() -> String {
-    use chrono::prelude::*;
-    let now: DateTime<Utc> = SystemTime::now().into();
-    now.format("%H:%M").to_string()
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let minutes = (secs / 60) % (24 * 60);
+    format!("{:02}:{:02}", minutes / 60, minutes % 60)
 }
 
 fn extract_yp_token(body: &str) -> Option<String> {
