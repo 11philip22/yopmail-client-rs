@@ -39,9 +39,8 @@
 //!   `&mut self` because the session state is updated on demand.
 //! - Network calls are performed with `reqwest`; non-2xx HTTP responses are typically surfaced as
 //!   [`Error::Status`], with the response body captured for debugging.
-//! - There is no built-in polling loop. Convenience methods like
-//!   [`YopmailClient::check_inbox`](crate::YopmailClient::check_inbox) perform a single request; if
-//!   you want to poll, implement a loop with `tokio::time::sleep`.
+//! - There is no built-in polling loop. [`YopmailClient::list_messages`] performs a single request;
+//!   if you want to poll, implement a loop with `tokio::time::sleep`.
 //!
 //! **Error behavior**
 //! - Transport errors, TLS failures, DNS issues, and timeouts are returned as [`Error::Http`]

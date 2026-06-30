@@ -84,7 +84,7 @@ Most methods open the session lazily. Call `open_inbox()` yourself when you want
 ```rust
 let mut client = YopmailClient::new("my-temp-inbox")?;
 client.open_inbox().await?;
-let messages = client.check_inbox().await?;
+let messages = client.list_messages(1).await?;
 ```
 
 Customize the underlying HTTP client with the builder:
@@ -114,11 +114,11 @@ cargo run --example demo
 | --- | --- |
 | Create a client | `YopmailClient::new`, `YopmailClient::builder` |
 | Initialize session | `open_inbox` |
-| List inbox | `list_messages`, `check_inbox`, `get_inbox_info` |
+| List inbox | `list_messages` |
 | Fetch content | `fetch_message`, `fetch_message_full` |
 | Download files | `download_attachment` |
 | Send mail | `send_message` |
-| Helpers | `get_last_message`, `get_inbox_summary`, `generate_random_mailbox` |
+| Helpers | `generate_random_mailbox` |
 
 Mailboxes are local parts only. The domain is always `yopmail.com`.
 
