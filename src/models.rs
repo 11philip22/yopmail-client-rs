@@ -18,10 +18,6 @@ pub struct Message {
     pub subject: String,
     /// Sender display value as displayed in the inbox (may be missing).
     pub sender: Option<String>,
-    /// Date as parsed from the inbox HTML.
-    ///
-    /// Note: the current inbox parser does not extract a date, so this is always `None`.
-    pub date: Option<String>,
     /// Time as displayed in the inbox (may be missing).
     pub time: Option<String>,
 }

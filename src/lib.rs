@@ -37,7 +37,6 @@
 //! **Notes for experienced users**
 //! - The client is stateful: it keeps a cookie jar and an extracted `yp` token. Methods take
 //!   `&mut self` because the session state is updated on demand.
-//! - `Message::date` is currently always `None` because the inbox HTML parser does not extract it.
 //! - Network calls are performed with `reqwest`; non-2xx HTTP responses are typically surfaced as
 //!   [`Error::Status`], with the response body captured for debugging.
 //! - There is no built-in polling loop. Convenience methods like

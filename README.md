@@ -128,7 +128,6 @@ Mailboxes are local parts only. The domain is always `yopmail.com`.
 > Prefer `generate_random_mailbox()` for tests and demos so multiple runs do not collide in a shared public inbox.
 
 - `YopmailClient` is stateful and methods take `&mut self` because cookies and the `yp` token are refreshed on demand.
-- `Message::date` is currently always `None`; `Message::time` is parsed when available.
 - `send_message` currently accepts only recipients ending in `@yopmail.com`.
 - `fetch_message_full` retries a few YOPmail message ID variants after HTTP 400 responses, but the crate does not implement network retry or polling loops.
 - Non-success responses from core inbox, mail, send, and attachment requests are returned as `Error::Status` with the response body captured for debugging.

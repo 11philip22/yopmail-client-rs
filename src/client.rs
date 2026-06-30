@@ -198,8 +198,7 @@ impl YopmailClient {
     /// If the session is not yet initialized, this calls [`open_inbox`](Self::open_inbox)
     /// automatically.
     ///
-    /// The returned [`Message`] values are derived from the YOPmail inbox HTML. In particular,
-    /// `Message::date` is currently always `None`.
+    /// The returned [`Message`] values are derived from the YOPmail inbox HTML.
     ///
     /// # Errors
     /// - Returns [`Error::Http`] for transport failures and timeouts.
@@ -611,7 +610,6 @@ fn parse_messages(body: &str) -> Vec<Message> {
                 id,
                 subject,
                 sender,
-                date: None,
                 time,
             });
         }
@@ -744,7 +742,7 @@ fn clean_text(input: &str) -> String {
 /// - is lowercased
 /// - clamps `len` to the inclusive range `6..=32`
 pub fn generate_random_mailbox(len: usize) -> String {
-    let length = len.max(6).min(32);
+    let length = len.clamp(6, 32);
     let mut rng = rand::thread_rng();
     let raw: String = (0..length)
         .map(|_| rng.sample(Alphanumeric) as char)
