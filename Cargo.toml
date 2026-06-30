@@ -22,8 +22,16 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 rand = "0.8"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 
 [[example]]
 name = "cli"
 path = "examples/cli.rs"
+
+[[example]]
+name = "self_send"
+path = "examples/self_send.rs"
+
+[[example]]
+name = "demo"
+path = "examples/demo.rs"
