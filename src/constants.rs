@@ -8,7 +8,7 @@ use std::time::Duration;
 
 /// Default base URL used by [`YopmailClient`](crate::YopmailClient).
 pub const BASE_URL: &str = "https://yopmail.com";
-/// Default domain used when a mailbox is provided as `local` without `@domain`.
+/// Default domain used when building full YOPmail addresses.
 pub const DEFAULT_DOMAIN: &str = "yopmail.com";
 /// Version parameter used by the YOPmail inbox/mail endpoints.
 pub const VERSION: &str = "9.3";

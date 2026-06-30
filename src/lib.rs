@@ -14,7 +14,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), yopmail_client::Error> {
-//!     // A mailbox can be provided as `local` or `local@domain`.
+//!     // A mailbox is the local part only; the domain is always yopmail.com.
 //!     // Generating a random mailbox helps avoid collisions in shared inbox namespaces.
 //!     let mailbox = generate_random_mailbox(12);
 //!     let mut client = YopmailClient::new(&mailbox)?;

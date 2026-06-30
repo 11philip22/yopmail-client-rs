@@ -18,15 +18,11 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-fn parse_mailbox(mailbox: &str) -> (String, String) {
-    if let Some((local, domain)) = mailbox.split_once('@') {
-        (
-            local.trim().to_lowercase(),
-            domain.trim().to_lowercase(),
-        )
-    } else {
-        (mailbox.trim().to_lowercase(), DEFAULT_DOMAIN.to_string())
+fn normalize_mailbox(mailbox: &str) -> Result<String> {
+    if mailbox.contains('@') {
+        return Err(Error::InvalidRecipient);
     }
+    Ok(mailbox.trim().to_lowercase())
 }
 
 fn build_headers(base: &[(&str, &str)], extras: &[(&str, &str)]) -> HeaderMap {
@@ -47,7 +43,6 @@ fn build_headers(base: &[(&str, &str)], extras: &[(&str, &str)]) -> HeaderMap {
 /// inbox/mail endpoints. Methods take `&mut self` because session state is refreshed on demand.
 pub struct YopmailClient {
     mailbox: String,
-    domain: String,
     base_url: String,
     jar: Arc<Jar>,
     client: Client,
@@ -70,9 +65,7 @@ pub struct YopmailClientBuilder {
 impl YopmailClientBuilder {
     /// Create a builder for `mailbox`.
     ///
-    /// The mailbox may be provided as `local` or `local@domain`.
-    /// - `local` and `domain` are trimmed and lowercased.
-    /// - If no domain is provided, [`DEFAULT_DOMAIN`] is used.
+    /// The mailbox is the local part only, trimmed and lowercased.
     pub fn new(mailbox: impl AsRef<str>) -> Self {
         Self {
             mailbox: mailbox.as_ref().to_string(),
@@ -110,7 +103,7 @@ impl YopmailClientBuilder {
     /// This parses and normalizes the mailbox, builds a `reqwest::Client` with cookies enabled,
     /// and initializes session state (no network requests are made).
     pub fn build(self) -> Result<YopmailClient> {
-        let (mailbox, domain) = parse_mailbox(&self.mailbox);
+        let mailbox = normalize_mailbox(&self.mailbox)?;
         let jar = Arc::new(Jar::default());
 
         let mut builder = ClientBuilder::new()
@@ -126,7 +119,6 @@ impl YopmailClientBuilder {
 
         Ok(YopmailClient {
             mailbox,
-            domain,
             base_url: self.base_url,
             jar,
             client,
@@ -386,7 +378,7 @@ impl YopmailClient {
         }
 
         let form = [
-            ("msgfrom", format!("{}@{}", self.mailbox, self.domain)),
+            ("msgfrom", format!("{}@{}", self.mailbox, DEFAULT_DOMAIN)),
             ("msgto", to.to_string()),
             ("msgsubject", subject.to_string()),
             ("msgbody", body.to_string()),

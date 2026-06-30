@@ -93,7 +93,7 @@ Customize the underlying HTTP client with the builder:
 use std::time::Duration;
 use yopmail_client::YopmailClient;
 
-let mut client = YopmailClient::builder("my-temp-inbox@yopmail.com")
+let mut client = YopmailClient::builder("my-temp-inbox")
     .timeout(Duration::from_secs(20))
     .proxy_url("http://127.0.0.1:8080")
     .build()?;
@@ -120,7 +120,7 @@ cargo run --example demo
 | Send mail | `send_message` |
 | Helpers | `get_last_message`, `get_inbox_summary`, `generate_random_mailbox` |
 
-Mailboxes can be passed as `local` or `local@domain`. The default domain is `yopmail.com`.
+Mailboxes are local parts only. The domain is always `yopmail.com`.
 
 ## Notes
 

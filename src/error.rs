@@ -17,8 +17,8 @@ pub enum Error {
     /// An authentication/session-related error.
     #[error("authentication error: {0}")]
     Auth(String),
-    /// The recipient address is not accepted by the current implementation.
-    #[error("invalid recipient domain")]
+    /// The address domain is not accepted by the current implementation.
+    #[error("invalid address domain")]
     InvalidRecipient,
     /// The server returned a non-success HTTP status.
     ///
