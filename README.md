@@ -15,7 +15,7 @@
   <a href="#features">Features</a> &middot;
   <a href="#install">Install</a> &middot;
   <a href="#quickstart">Quickstart</a> &middot;
-  <a href="#cli-example">CLI Example</a> &middot;
+  <a href="#examples">Examples</a> &middot;
   <a href="#api-overview">API Overview</a> &middot;
   <a href="#notes">Notes</a> &middot;
   <a href="#resources">Resources</a>
@@ -23,7 +23,7 @@
 
 ---
 
-`yopmail-client` is a small async Rust crate for working with temporary YOPmail inboxes from tests, demos, and automation. It can list inbox pages, fetch message content, download attachments, send YOPmail-to-YOPmail messages, and read RSS feeds.
+`yopmail-client` is a small async Rust crate for working with temporary YOPmail inboxes from tests, demos, and automation. It can list inbox pages, fetch message content, download attachments, and send YOPmail-to-YOPmail messages.
 
 > [!NOTE]
 > This crate is unofficial. It talks to YOPmail's public web endpoints, so changes to YOPmail's HTML or request flow can require parser updates.
@@ -34,7 +34,6 @@
 - Fetch plain text, extracted HTML, raw HTML, and attachment links.
 - Download message attachments as bytes.
 - Send messages from a YOPmail mailbox to `@yopmail.com` recipients.
-- Build RSS feed URLs and parse RSS feed items.
 - Generate random mailbox names for disposable test flows.
 - Configure timeout, proxy, and base URL through `YopmailClientBuilder`.
 - Work with simple `serde`-serializable models.
@@ -100,22 +99,14 @@ let mut client = YopmailClient::builder("my-temp-inbox@yopmail.com")
     .build()?;
 ```
 
-## CLI Example
+## Examples
 
-This repository ships an example CLI in [`examples/cli.rs`](examples/cli.rs):
+This repository ships two examples:
 
 ```bash
-cargo run --example cli -- --mailbox my-temp-inbox list --details
-cargo run --example cli -- --mailbox my-temp-inbox fetch --id <message-id>
-cargo run --example cli -- --mailbox my-temp-inbox fetch --id <message-id> --html
-cargo run --example cli -- --mailbox my-temp-inbox fetch --id <message-id> --attachments
-cargo run --example cli -- --mailbox my-temp-inbox fetch --id <message-id> --download-attachments downloads/
-cargo run --example cli -- --mailbox my-temp-inbox send --to friend@yopmail.com --subject "Hello" --body "Hi"
-cargo run --example cli -- --mailbox my-temp-inbox rss-data
-cargo run --example cli -- random --len 12
+cargo run --example self_send
+cargo run --example demo
 ```
-
-Use `--proxy <url>` before the subcommand to route requests through a proxy.
 
 ## API Overview
 
@@ -127,7 +118,6 @@ Use `--proxy <url>` before the subcommand to route requests through a proxy.
 | Fetch content | `fetch_message`, `fetch_message_full` |
 | Download files | `download_attachment` |
 | Send mail | `send_message` |
-| RSS | `get_rss_feed_url`, `get_rss_feed_data` |
 | Helpers | `get_last_message`, `get_inbox_summary`, `generate_random_mailbox` |
 
 Mailboxes can be passed as `local` or `local@domain`. The default domain is `yopmail.com`, and the crate exports `ALT_DOMAINS` for callers that need the known alias list.

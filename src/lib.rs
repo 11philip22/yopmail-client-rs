@@ -3,7 +3,6 @@
 //! `yopmail-client` drives the same HTTP endpoints as the YOPmail web UI to:
 //! - list inbox messages
 //! - fetch message content (text/HTML/raw) and attachments
-//! - generate and fetch RSS feeds
 //! - send messages (currently only to `@yopmail.com`)
 //!
 //! This crate is not affiliated with YOPmail. The YOPmail site is HTML-driven and may change at any
@@ -55,12 +54,11 @@
 //!   [`YopmailClient::send_message`](crate::YopmailClient::send_message), and
 //!   [`YopmailClient::download_attachment`](crate::YopmailClient::download_attachment)).
 //! - Other methods currently do not check `StatusCode` and may return `Ok(...)` even if the server
-//!   responded with a non-2xx status (notably [`YopmailClient::open_inbox`](crate::YopmailClient::open_inbox)
-//!   and [`YopmailClient::get_rss_feed_data`](crate::YopmailClient::get_rss_feed_data)). If you need
-//!   strict status handling, wrap the crate or open an issue.
+//!   responded with a non-2xx status (notably [`YopmailClient::open_inbox`](crate::YopmailClient::open_inbox)).
+//!   If you need strict status handling, wrap the crate or open an issue.
 //! - `fetch_message_full` has a limited retry mechanism: on HTTP 400 it retries the mail fetch with
 //!   a few different message ID encodings. There is no network retry/backoff logic.
-//! - External system failures are expected: YOPmail HTML/RSS structure can change, endpoints can be
+//! - External system failures are expected: YOPmail HTML structure can change, endpoints can be
 //!   rate-limited or blocked, and responses may include unexpected markup. These typically surface
 //!   as [`Error::Status`], [`Error::Http`], or best-effort empty parses depending on the endpoint.
 pub mod client;
@@ -74,4 +72,4 @@ pub use constants::{
     DEFAULT_TIMEOUT_SECS,
 };
 pub use error::Error;
-pub use models::{Attachment, Message, MessageContent, RssItem};
+pub use models::{Attachment, Message, MessageContent};

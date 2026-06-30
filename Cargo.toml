@@ -2,17 +2,16 @@
 name = "yopmail-client"
 version = "0.3.4"
 edition = "2024"
-description = "Unofficial async client for YOPmail: list inboxes, fetch (HTML/raw), send, attachments, RSS"
+description = "Unofficial async client for YOPmail: list inboxes, fetch (HTML/raw), send, attachments"
 license = "MIT"
 readme = "readme.md"
 homepage = "https://yopmail.com"
 repository = "https://github.com/11philip22/yopmail-client-rs"
 documentation = "https://docs.rs/yopmail-client"
-keywords = ["yopmail", "email", "disposable", "temp", "rss"]
-categories = ["email", "command-line-utilities"]
+keywords = ["yopmail", "email", "disposable", "temp"]
+categories = ["email"]
 
 [dependencies]
-clap = { version = "4.5", features = ["derive"] }
 regex = "1.11"
 reqwest = { version = "0.12", features = ["cookies", "gzip", "brotli", "deflate", "json"] }
 scraper = "0.19"
@@ -23,10 +22,6 @@ rand = "0.8"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
-
-[[example]]
-name = "cli"
-path = "examples/cli.rs"
 
 [[example]]
 name = "self_send"

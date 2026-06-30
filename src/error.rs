@@ -23,7 +23,7 @@ pub enum Error {
     /// Note: the current implementation does not construct this variant.
     #[error("network error: {0}")]
     Network(String),
-    /// A parsing error (typically HTML/RSS parsing of YOPmail responses).
+    /// A parsing error (typically HTML parsing of YOPmail responses).
     ///
     /// Note: the current implementation does not construct this variant; parsing is currently
     /// best-effort and typically results in empty/placeholder values rather than an error.

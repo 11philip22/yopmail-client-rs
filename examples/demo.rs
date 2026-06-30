@@ -6,7 +6,6 @@
 //! - Polling for incoming messages
 //! - Fetching full email content
 //! - Downloading attachments
-//! - Reading RSS feed data
 
 use std::io::Write;
 use std::time::{Duration, Instant};
@@ -104,19 +103,6 @@ async fn main() -> Result<(), Error> {
         print!("\r   Checking... {remaining} seconds remaining   ");
         std::io::stdout().flush()?;
         tokio::time::sleep(poll_interval).await;
-    }
-
-    println!("\n\nRSS feed:");
-    println!("   URL: {}", client.get_rss_feed_url(None));
-    match client.get_rss_feed_data(None).await {
-        Ok((url, items)) => {
-            println!("   Resolved URL: {url}");
-            println!("   {} item(s)", items.len());
-            for (idx, item) in items.iter().take(5).enumerate() {
-                println!("   {}. {} (from: {})", idx + 1, item.subject, item.sender);
-            }
-        }
-        Err(e) => eprintln!("   RSS fetch failed: {e}"),
     }
 
     println!("\n{}", "=".repeat(50));

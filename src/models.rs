@@ -1,7 +1,7 @@
 //! Data models returned by YOPmail operations.
 //!
 //! These types intentionally keep fields as simple strings and `Option<String>` values to reflect
-//! the underlying HTML/RSS sources. Fields may be absent or change based on YOPmail's markup.
+//! the underlying HTML sources. Fields may be absent or change based on YOPmail's markup.
 use serde::Serialize;
 
 /// Summary information for a mailbox message.
@@ -24,22 +24,6 @@ pub struct Message {
     pub date: Option<String>,
     /// Time as displayed in the inbox (may be missing).
     pub time: Option<String>,
-}
-
-/// RSS item parsed from a Yopmail feed.
-#[derive(Debug, Clone, Serialize)]
-/// An item parsed from the mailbox RSS feed.
-pub struct RssItem {
-    /// Subject/title of the RSS item.
-    pub subject: String,
-    /// Sender inferred from the item's description (best-effort).
-    pub sender: String,
-    /// Publication date string from the RSS feed.
-    pub date: String,
-    /// Link to the message as provided by the RSS feed.
-    pub url: String,
-    /// Raw description text (when present).
-    pub description: Option<String>,
 }
 
 /// Attachment metadata from a message.

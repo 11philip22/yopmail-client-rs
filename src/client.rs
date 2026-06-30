@@ -5,7 +5,7 @@
 //! [`YopmailClient::open_inbox`] the first time they need a session.
 use crate::constants::*;
 use crate::error::{Error, Result};
-use crate::models::{Attachment, Message, MessageContent, RssItem};
+use crate::models::{Attachment, Message, MessageContent};
 use regex::Regex;
 use reqwest::{
     cookie::Jar,
@@ -531,45 +531,6 @@ impl YopmailClient {
         Ok(bytes.to_vec())
     }
 
-    /// Construct the RSS feed URL for a mailbox.
-    ///
-    /// If `mailbox` is `None`, this uses the mailbox configured on the client.
-    pub fn get_rss_feed_url(&self, mailbox: Option<&str>) -> String {
-        let target = mailbox.unwrap_or(&self.mailbox);
-        format!("{}/rss?login={}", self.base_url, target)
-    }
-
-    /// Generate (or resolve) the RSS feed for a mailbox and return `(rss_url, items)`.
-    ///
-    /// This first requests the "gen-rss" endpoint to obtain a feed URL (including a hash parameter),
-    /// then downloads that RSS XML and parses `<item>` entries.
-    ///
-    /// Parsing is best-effort:
-    /// - `RssItem::sender` is inferred by scanning the item's description for an email address
-    /// - missing fields fall back to placeholder strings (for example `"No Subject"`)
-    ///
-    /// # Errors
-    /// - Returns [`Error::Http`] for transport failures and timeouts.
-    /// - This method does not currently validate HTTP status codes for the RSS endpoints; if the
-    ///   server returns a non-2xx response body that can be read as text, the method may still
-    ///   return `Ok((rss_url, items))` with an empty or partial parse.
-    pub async fn get_rss_feed_data(
-        &mut self,
-        mailbox: Option<&str>,
-    ) -> Result<(String, Vec<RssItem>)> {
-        let target = mailbox.unwrap_or(&self.mailbox);
-        let gen_url = format!("{}/gen-rss?login={}", self.base_url, target);
-
-        let resp = self.client.get(&gen_url).send().await?;
-        let body = resp.text().await?;
-        let rss_url = extract_rss_url(&body, &self.base_url, target);
-
-        let rss_resp = self.client.get(&rss_url).send().await?;
-        let rss_body = rss_resp.text().await?;
-        let items = parse_rss_items(&rss_body);
-        Ok((rss_url, items))
-    }
-
     fn set_default_cookies(&self) {
         let base: reqwest::Url = self
             .base_url
@@ -765,73 +726,6 @@ fn clean_text(input: &str) -> String {
         }
     }
     out.trim().to_string()
-}
-
-fn extract_rss_url(gen_body: &str, base: &str, mailbox: &str) -> String {
-    let pattern = format!(r#"href="(/rss\?login={}&h=[^"]+)""#, regex::escape(mailbox));
-    let re = Regex::new(&pattern).ok();
-    if let Some(re) = re {
-        if let Some(caps) = re.captures(gen_body) {
-            if let Some(path) = caps.get(1) {
-                return format!("{}{}", base, path.as_str());
-            }
-        }
-    }
-    format!("{}/rss?login={}", base, mailbox)
-}
-
-fn parse_rss_items(body: &str) -> Vec<RssItem> {
-    let doc = Html::parse_document(body);
-    let item_sel = Selector::parse("item").ok();
-    let title_sel = Selector::parse("title").ok();
-    let link_sel = Selector::parse("link").ok();
-    let date_sel = Selector::parse("pubdate").ok();
-    let desc_sel = Selector::parse("description").ok();
-
-    let mut items = Vec::new();
-    if let Some(item_sel) = item_sel {
-        for node in doc.select(&item_sel) {
-            let subject = title_sel
-                .as_ref()
-                .and_then(|sel| node.select(sel).next())
-                .map(|n| n.text().collect::<String>().trim().to_string())
-                .unwrap_or_else(|| "No Subject".into());
-            let url = link_sel
-                .as_ref()
-                .and_then(|sel| node.select(sel).next())
-                .map(|n| n.text().collect::<String>().trim().to_string())
-                .unwrap_or_default();
-            let date = date_sel
-                .as_ref()
-                .and_then(|sel| node.select(sel).next())
-                .map(|n| n.text().collect::<String>().trim().to_string())
-                .unwrap_or_else(|| "Unknown Date".into());
-            let description = desc_sel
-                .as_ref()
-                .and_then(|sel| node.select(sel).next())
-                .map(|n| n.text().collect::<String>().trim().to_string());
-            let sender = description
-                .as_ref()
-                .and_then(|desc| find_email(desc))
-                .unwrap_or_else(|| "Unknown".into());
-
-            items.push(RssItem {
-                subject,
-                sender,
-                date,
-                url,
-                description,
-            });
-        }
-    }
-    items
-}
-
-fn find_email(text: &str) -> Option<String> {
-    let re = Regex::new(r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})").ok()?;
-    re.captures(text)
-        .and_then(|caps| caps.get(1))
-        .map(|m| m.as_str().to_string())
 }
 
 /// Generate a random mailbox name.
